@@ -1,0 +1,10 @@
+name = "SporkProofs"
+version = "0.1.0"
+defaultTargets = ["sporkproofs"]
+
+[[lean_lib]]
+name = "SporkProofs"
+
+[[lean_exe]]
+name = "sporkproofs"
+root = "Main"

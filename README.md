@@ -1,1 +1,1 @@
-# spork-proofs
+# SporkProofs
