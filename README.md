@@ -1,1 +1,1 @@
-# spork-lean-proofs
+# spork-proofs
