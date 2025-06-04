@@ -2,8 +2,13 @@ name = "SporkProofs"
 version = "0.1.0"
 defaultTargets = ["sporkproofs"]
 
+[leanOptions]
+#pp.unicode.fun = true # pretty-prints `fun a ↦ b`
+autoImplicit = false
+
 [[lean_lib]]
 name = "SporkProofs"
+globs = "SporkProofs.*"
 
 [[lean_exe]]
 name = "sporkproofs"

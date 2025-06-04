@@ -181,15 +181,16 @@ namespace StackFrameCode
       decidable_of_iff (b.OkayRets bsigs bsig ret)
         ⟨Okay.cont, λ | Okay.cont p => p⟩
 
-  instance instDecidableEq : DecidableEq StackFrameCode
-    | code c, code c' =>
-      decidable_of_iff (c = c')
-        ⟨congrArg code, congrArg (λ | code c => c | _ => c)⟩
-    | cont b, cont b' =>
-      decidable_of_iff (b = b')
-        ⟨congrArg cont, congrArg (λ | cont b => b | _ => b)⟩
-    | code c, cont b => isFalse (by simp)
-    | cont b, code c => isFalse (by simp)
+  -- instance instDecidableEq : DecidableEq StackFrameCode
+  --   | code c, code c' =>
+  --     decidable_of_iff (c = c')
+  --       ⟨congrArg code, congrArg (λ | code c => c | _ => c)⟩
+  --   | cont b, cont b' =>
+  --     decidable_of_iff (b = b')
+  --       ⟨congrArg cont, congrArg (λ | cont b => b | _ => b)⟩
+  --   | code c, cont b => isFalse (by simp)
+  --   | cont b, code c => isFalse (by simp)
+  deriving instance DecidableEq for StackFrameCode
 end StackFrameCode
 
 inductive SpawnCall : Type where
@@ -216,11 +217,12 @@ namespace SpawnCall
         ⟨λ ⟨p, q⟩ => Okay.mk p q,
          λ | Okay.mk p q => ⟨p, q⟩⟩
   
-  instance instDecidableEq : DecidableEq SpawnCall
-    | mk f args ret, mk f' args' ret' =>
-      decidable_of_iff ((f, args, ret) = (f', args', ret'))
-        ⟨congrArg (λ (f, args, ret) => mk f args ret),
-         congrArg (λ | mk f args ret => (f, args, ret))⟩
+  -- instance instDecidableEq : DecidableEq SpawnCall
+  --   | mk f args ret, mk f' args' ret' =>
+  --     decidable_of_iff ((f, args, ret) = (f', args', ret'))
+  --       ⟨congrArg (λ (f, args, ret) => mk f args ret),
+  --        congrArg (λ | mk f args ret => (f, args, ret))⟩
+  deriving instance DecidableEq for SpawnCall
 end SpawnCall
 
 inductive SpawnDeque : Type where
@@ -249,6 +251,11 @@ namespace SpawnDeque
   namespace Okay
     abbrev unpr {fsigs canProm} {ρ : SpawnDeque} : ρ.Okay fsigs canProm -> IVec (·.Okay fsigs) ρ.unpr | mk u _p => u
     abbrev prom {fsigs canProm} {ρ : SpawnDeque} : ρ.Okay fsigs canProm -> SpawnOrder canProm ρ.prom | mk _u p => p
+
+    theorem castCanProm {fsigs ρ} : {canProm : Bool} -> (canProm' : Bool) -> canProm ≤ canProm' -> Okay fsigs canProm ρ -> Okay fsigs canProm' ρ
+      | false, false, _, .mk u p => .mk u p
+      | true, true, _, .mk u p => .mk u p
+      | false, true, _, .mk u _p => .mk u rfl
   end Okay
   
   abbrev sig : SpawnDeque -> SporkSig
@@ -268,10 +275,11 @@ namespace SpawnDeque
         (IVec (·.Okay fsigs) u ∧ SpawnOrder canProm p)
         ⟨λ ⟨a, b⟩ => Okay.mk a b, λ | Okay.mk a b => ⟨a, b⟩⟩
 
-  instance instDecidableEq : DecidableEq SpawnDeque
-    | mk u p, mk u' p' => decidable_of_iff ((u, p) = (u', p'))
-      ⟨congrArg (λ (u, p) => mk u p),
-       congrArg (λ | mk u p => (u, p))⟩
+  -- instance instDecidableEq : DecidableEq SpawnDeque
+  --   | mk u p, mk u' p' => decidable_of_iff ((u, p) = (u', p'))
+  --     ⟨congrArg (λ (u, p) => mk u p),
+  --      congrArg (λ | mk u p => (u, p))⟩
+  deriving instance DecidableEq for SpawnDeque
 
   theorem empty_okay {fsigs canProm} : SpawnDeque.Okay fsigs canProm ∅ :=
     ⟨.nil, SpawnDeque.SpawnOrder_nil canProm⟩
@@ -332,6 +340,12 @@ namespace StackFrame
       | .mk _f _ρ _X _c, mk _flt _ρₒₖ cb _cₒₖ => cb
     theorem isCont {Pr canProm ret} : {k : StackFrame} -> (kₒₖ : k.Okay Pr (some ret) canProm) -> k.c.isCont
       | .mk _f _ρ _X _c, mk _flt _ρₒₖ cb _cₒₖ => cb
+
+    theorem castCanProm {Pr curr canProm} : {k : StackFrame} ->
+                        (canProm' : Bool) -> canProm ≤ canProm' ->
+                        (kₒₖ : k.Okay Pr curr canProm) -> k.Okay Pr curr canProm'
+      | .mk _f _ρ _X _c, canProm', l, .mk flt ρₒₖ cₒₖ cb =>
+        .mk flt (ρₒₖ.castCanProm canProm' l) cₒₖ cb
   end Okay
 
   instance instDecidable {Pr curr canProm} : (k : StackFrame) -> Decidable (k.Okay Pr curr canProm)
@@ -344,11 +358,12 @@ namespace StackFrame
         ⟨λ ⟨a, b, c, d⟩ => Okay.mk a b c d,
          λ | Okay.mk a b c d => ⟨a, b, c, d⟩⟩
 
-  instance instDecidableEq : DecidableEq StackFrame
-    | mk f ρ X c, mk f' ρ' X' c' =>
-      decidable_of_iff ((f, ρ, X, c) = (f', ρ', X', c'))
-        ⟨congrArg (λ (a, b, c, d) => mk a b c d),
-         congrArg (λ | mk a b c d => (a, b, c, d))⟩
+  -- instance instDecidableEq : DecidableEq StackFrame
+  --   | mk f ρ X c, mk f' ρ' X' c' =>
+  --     decidable_of_iff ((f, ρ, X, c) = (f', ρ', X', c'))
+  --       ⟨congrArg (λ (a, b, c, d) => mk a b c d),
+  --        congrArg (λ | mk a b c d => (a, b, c, d))⟩
+  deriving instance DecidableEq for StackFrame
 end StackFrame
 
 inductive CallStack : Type where
@@ -380,11 +395,11 @@ namespace CallStack
     | nil ⬝ k, p => k
     | K  ⬝ k ⬝ _k', p => firstFrame (K ⬝ k) (by simp)
 
-  theorem append_cons : {K K' : CallStack} -> {k : StackFrame} -> (K ++ K') ⬝ k = K ++ (K' ⬝ k)
+  @[simp] theorem append_cons : {K K' : CallStack} -> {k : StackFrame} -> K ++ (K' ⬝ k) = (K ++ K') ⬝ k
     | _K, nil, _k => rfl
     | _K, _K' ⬝ _k', k => congrArg (· ⬝ k) append_cons
-  theorem append_nil : {K : CallStack} -> K ++ nil = K := rfl
-  theorem nil_append : {K : CallStack} -> nil ++ K = K
+  @[simp] theorem append_nil : {K : CallStack} -> K ++ nil = K := rfl
+  @[simp] theorem nil_append : {K : CallStack} -> nil ++ K = K
     | .nil => rfl
     | _K ⬝ _k => append_cons ▸ nil_append ▸ rfl
   theorem append_assoc : {K K' K'' : CallStack} -> (K ++ K') ++ K'' = K ++ (K' ++ K'')
@@ -392,11 +407,13 @@ namespace CallStack
     | _K, _K', _K'' ⬝ k =>
       append_cons ▸ append_cons ▸ congrArg (· ⬝ k) append_assoc
   theorem append_unpr : {K K' : CallStack} -> (K ++ K').unpr = K.unpr ++ K'.unpr
-    | K, nil => by simp[append_nil]
-    | K, K' ⬝ k => by
-        simp[unpr]
-        rw[← List.append_assoc, ← @append_unpr K K']
-        exact rfl
+    | K, nil => by simp
+    | K, K' ⬝ k => by simp[unpr]; rw[← List.append_assoc, ← append_unpr]; rfl
+  theorem append_prom : {K K' : CallStack} -> (K ++ K').prom = K'.prom ++ K.prom
+    | K, nil => by simp
+    | K, K' ⬝ k => by simp; exact append_prom
+  -- theorem prom_nil_of_cons {K k} : (K ⬝ k).prom = [] -> k.ρ.prom = [] ∧ K.prom = [] :=
+  --   List.append_eq_nil_iff.mp
 
   abbrev head : (K : CallStack) -> K ≠ nil -> StackFrame
     | _K ⬝ k, _ => k
@@ -408,6 +425,13 @@ namespace CallStack
     | nil => default
     | nil ⬝ ⟨f, _, _, _⟩ => Pr.funs[f]!.fsig.ret
     | K ⬝ _k => K.retjoin Pr
+
+  @[simp] theorem retjoin_first {Pr : Program} : {k : StackFrame} -> {K : CallStack} -> ({k} ++ K).retjoin Pr = Pr.funs[k.f]!.fsig.ret
+    | k, .nil => rfl
+    | k, .nil ⬝ k' => rfl
+    | k, K ⬝ k' ⬝ k'' => by
+        simp only[retjoin]
+        exact retjoin_first (K := K ⬝ k')
 
   inductive Okay (Pr : Program) : (get : Option Nat) -> CallStack -> Prop where
     | nil {gets} : nil.Okay Pr (some gets)
@@ -452,16 +476,17 @@ namespace CallStack
                     ⟨Okay.cons kₒₖ, λ | Okay.cons _kₒₖ' Kₒₖ => Kₒₖ⟩)
         (isFalse ∘ λ | kₙₒₖ, .cons kₒₖ _Kₒₖ => kₙₒₖ kₒₖ)
 
-  instance instDecidableEq : DecidableEq CallStack
-    | nil, nil => isTrue rfl
-    | K ⬝ k, K' ⬝ k' =>
-      let KK'dec : Decidable (K = K') := instDecidableEq K K'
-      decidable_of_iff ((K = K') ∧ (k = k'))
-        ⟨λ ⟨Keq, keq⟩ => Keq ▸ keq ▸ rfl,
-         λ p => ⟨congrArg (λ | K ⬝ k => K | _ => K) p,
-                 congrArg (λ | K ⬝ k => k | _ => k) p⟩⟩
-    | nil, K' ⬝ k' => isFalse (by simp)
-    | K' ⬝ k', nil => isFalse (by simp)
+  -- instance instDecidableEq : DecidableEq CallStack
+  --   | nil, nil => isTrue rfl
+  --   | K ⬝ k, K' ⬝ k' =>
+  --     let KK'dec : Decidable (K = K') := instDecidableEq K K'
+  --     decidable_of_iff ((K = K') ∧ (k = k'))
+  --       ⟨λ ⟨Keq, keq⟩ => Keq ▸ keq ▸ rfl,
+  --        λ p => ⟨congrArg (λ | K ⬝ k => K | _ => K) p,
+  --                congrArg (λ | K ⬝ k => k | _ => k) p⟩⟩
+  --   | nil, K' ⬝ k' => isFalse (by simp)
+  --   | K' ⬝ k', nil => isFalse (by simp)
+  deriving instance DecidableEq for CallStack
 
   abbrev retjoin?! {Pr get} : (K : CallStack) -> K.Okay Pr get -> Option Nat
     | .nil, _ok => none
@@ -479,11 +504,22 @@ namespace CallStack
 
   namespace Okay
 
+    theorem append {Pr} : {K K' : CallStack} -> {gets : Option Nat} -> K.Okay Pr (some (K'.retjoin Pr)) -> K'.Okay Pr gets -> (gets.isNone ∨ K' ≠ .nil) -> K.allPromoted -> (K ++ K').Okay Pr gets
+      | K, .nil ⬝ k, gets, Kok, K'ok@(.nil ⬝ₒₖ kok), _, kprom =>
+        by simp; exact
+          (Option.some_inj.mp (retjoin_eq_retjoin?! K'ok) ▸ Kok) ⬝ₒₖ (kprom ▸ kok)
+      | K, K' ⬝ k' ⬝ k, gets, Kok, K'ok ⬝ₒₖ kok, p, kprom =>
+        let kprom' : K.unpr = [] := by simp_all[kprom]
+        let kp : (K' ⬝ k').unpr = (K ++ (K' ⬝ k')).unpr :=
+          by simp[append_unpr, kprom']
+        (append Kok K'ok (Or.inr (by simp)) kprom) ⬝ₒₖ
+          (by simp only[allPromoted, kp.symm]; exact kok)
+
     theorem unappend {Pr} : {get : Option Nat} -> {K K' : CallStack} -> (K ++ K').Okay Pr get -> (K' ≠ .nil) ->
                      K.allPromoted -> K.Okay Pr (some (K'.retjoin Pr)) ∧ K'.Okay Pr get
       | get, K, .nil ⬝ k, ok, _, kprom =>
         let ok' : (K ⬝ k).Okay Pr get :=
-          by rw[← @append_cons K .nil k] at ok; exact ok
+          by rw[@append_cons K .nil k] at ok; exact ok
         let k_ok : k.Okay Pr get true :=
           kprom ▸ ok'.head
         ⟨by simp[retjoin]
@@ -500,9 +536,6 @@ namespace CallStack
           rw[← List.nil_append (K' ⬝ k').unpr, kp, ← append_unpr]
           exact ok.head
         ⟨Kok, K'ok ⬝ₒₖ k'ok⟩
-
-    /-theorem find_cons {Pr} : {K K' : CallStack} -> {k : StackFrame} -> (ok : (K ⬝ k ++ K').Okay Pr none) -> (kprom : K.allPromoted) -> (nn : K' ≠ .nil) -> k.Okay Pr (K'.retjoin?! (unappend ok nn kprom)) K.allPromoted
-      | get, K, K', k, ok => sorry-/
   end Okay
 end CallStack
 
@@ -532,8 +565,8 @@ namespace ThreadPool
            (Kₒₖ : K.Okay Pr none) ->
            (leaf K).Okay Pr K.prom
     | cat {P P' ρ} :
-          P.Okay Pr (P'.retjoin Pr :: ρ) ->
-          P'.Okay Pr [] ->
+          (Pₒₖ : P.Okay Pr (P'.retjoin Pr :: ρ)) ->
+          (P'ₒₖ : P'.Okay Pr []) ->
           -- P.prom.head? = some (P'.retjoin Pr) ->
           -- P'.prom = [] ->
           (cat P P').Okay Pr ρ
@@ -564,18 +597,19 @@ namespace ThreadPool
         ⟨λ ⟨Pₒₖ, P'ₒₖ⟩ => Okay.cat Pₒₖ P'ₒₖ,
          λ | Okay.cat Pₒₖ P'ₒₖ => ⟨Pₒₖ, P'ₒₖ⟩⟩
 
-  instance instDecidableEq : DecidableEq ThreadPool
-    | leaf K, leaf K' =>
-      decidable_of_iff (K = K')
-        ⟨congrArg leaf,
-         congrArg (λ | leaf K => K | _ => K)⟩
-    | cat Pₗ Pᵣ, cat Pₗ' Pᵣ' =>
-      match instDecidableEq Pₗ Pₗ', instDecidableEq Pᵣ Pᵣ' with
-        | isFalse f, _ => isFalse (f ∘ congrArg (λ | cat l r => l | _ => Pₗ))
-        | _, isFalse f => isFalse (f ∘ congrArg (λ | cat l r => r | _ => Pᵣ))
-        | isTrue tₗ, isTrue tᵣ => isTrue (tₗ ▸ tᵣ ▸ rfl)
-    | leaf _, cat _ _ => isFalse (by simp)
-    | cat _ _, leaf _ => isFalse (by simp)
+  -- instance instDecidableEq : DecidableEq ThreadPool
+  --   | leaf K, leaf K' =>
+  --     decidable_of_iff (K = K')
+  --       ⟨congrArg leaf,
+  --        congrArg (λ | leaf K => K | _ => K)⟩
+  --   | cat Pₗ Pᵣ, cat Pₗ' Pᵣ' =>
+  --     match instDecidableEq Pₗ Pₗ', instDecidableEq Pᵣ Pᵣ' with
+  --       | isFalse f, _ => isFalse (f ∘ congrArg (λ | cat l r => l | _ => Pₗ))
+  --       | _, isFalse f => isFalse (f ∘ congrArg (λ | cat l r => r | _ => Pᵣ))
+  --       | isTrue tₗ, isTrue tᵣ => isTrue (tₗ ▸ tᵣ ▸ rfl)
+  --   | leaf _, cat _ _ => isFalse (by simp)
+  --   | cat _ _, leaf _ => isFalse (by simp)
+  deriving instance DecidableEq for ThreadPool
 
   -- abbrev step (Pr : Program) : ThreadPool -> Option ThreadPool
   --   | leaf (K ⬝ ⟨f, ρ, X, code (.stmt e c)⟩) =>
@@ -743,23 +777,30 @@ namespace Step
     goto_okay_rets Prok (Y := []) (y := []) p ρok bnext_ok.cast0 .nil
 
   theorem entry_okay
-      {Pr} (Prok : Pr.Okay) {f canProm} {X : ValMap} {x : List Var}
+      {Pr} (Prok : Pr.Okay) {f canProm} {X : List Val}
       (p : f < Pr.size)
-      (xok : IVec (·.Okay X.length) x)
-      (sigok : Pr.funs[f].fsig.arity = x.length) :
-      StackFrame.Okay Pr none canProm ⟨f, ∅, X[x]!, codeEntry Pr f⟩ :=
+      (sigok : Pr.funs[f].fsig.arity = X.length) :
+      StackFrame.Okay Pr none canProm ⟨f, ∅, X, codeEntry Pr f⟩ :=
     let fok := Prok.1.get ⟨f, p⟩
     let c' : Code.Okay Pr.fsigs Pr.funs[f].bsigs Pr.funs[f].fsig.ret
-              ⟨X[x]!.length, []⟩
+              ⟨X.length, []⟩
               Pr.funs[f]!.blocks.head!.code :=
-      argsOfGetElem xok ▸
-      xok.map_length (λ x xₒₖ => X[x]) ▸
       sigok ▸
       Eq.symm (getElem!_pos Pr.funs f p) ▸
       fok.2.headeq ▸
       fok.2.head!eq ▸
       (fok.1.head fok.2.nonnil).1
     ⟨p, SpawnDeque.empty_okay, rfl, .code c'⟩
+
+  theorem goto_entry_okay
+      {Pr} (Prok : Pr.Okay) {f canProm} {X : ValMap} {x : List Var}
+      (p : f < Pr.size)
+      (xok : IVec (·.Okay X.length) x)
+      (sigok : Pr.funs[f].fsig.arity = x.length) :
+      StackFrame.Okay Pr none canProm ⟨f, ∅, X[x]!, codeEntry Pr f⟩ :=
+    entry_okay Prok p (argsOfGetElem xok ▸
+                       xok.map_length (λ x xₒₖ => X[x]) ▸
+                       sigok)
 
   theorem P_same_prom {Pr} : {P : ThreadPool} -> {ρ : SporkSig} ->
                     P.Okay Pr ρ -> P.prom = ρ
@@ -770,6 +811,8 @@ namespace Step
     | .leaf K, .(K.prom), .leaf Kₒₖ =>
       rfl
 
+  theorem leaf' {Pr} {K : CallStack} (ρ : SporkSig) (p : ρ = K.prom) (Kₒₖ : K.Okay Pr none) : (ThreadPool.leaf K).Okay Pr ρ :=
+    p ▸ .leaf Kₒₖ
   
   open ThreadPool.Okay (leaf cat) in
   theorem preservation {Pr : Program} (Prok : Pr.Okay) : {P P' : ThreadPool} -> {ρ : SporkSig} -> P.Okay Pr ρ -> Pr ⊢ P ↦ P' -> P'.Okay Pr ρ := by
@@ -815,7 +858,7 @@ namespace Step
                                Pr.fsigs[g].ret bret :=
                 Pr.funs.getElem_map (·.fsig) ▸ bret_ok
               let gframe_ok :=
-                entry_okay (f := g) Prok (Pr.size_eq_fsigs_length ▸ flt) x_ok
+                goto_entry_okay (f := g) Prok (Pr.size_eq_fsigs_length ▸ flt) x_ok
                   (Pr.funs.getElem_map (·.fsig) ▸ sigok)
               let glt := gframe_ok.flt
               let bret_ok'' : Cont.OkayRets Pr.funs[f].bsigs ⟨X.length, ρ.sig⟩
@@ -848,38 +891,56 @@ namespace Step
                          exact bbody_ok))
 
     · case promote f unpr g prom X K c K' u p ok =>
-        apply cat
-        · exact sorry
-        · apply @leaf Pr {⟨g.f, ∅, g.args, codeEntry Pr g.f⟩}
-          apply (.nil ⬝ₒₖ ·)
-          let ok' : (K ++ ({⟨f, ⟨(g :: unpr), prom⟩, X, c⟩} ++ K')).Okay Pr none :=
-            CallStack.append_assoc ▸ ok
-          let ⟨Kok, K'ok⟩ := ok'.unappend (K := K)
-                               (by cases K' <;> simp)
-                               (by simp[u])
-          let rec hp : {K' : CallStack} ->
-                       ({⟨f, ⟨g :: unpr, prom⟩, X, c⟩} ++ K').Okay Pr none ->
-                       K'.prom = [] ->
---                       (K ⬝ ⟨f, ⟨g :: unpr, prom⟩, X, c⟩ ++ K').Okay Pr none ->
-                       StackFrame.Okay Pr none true ⟨g.f, ∅, g.args, codeEntry Pr g.f⟩
-            | .nil, ok, _ => by
-              rw[CallStack.append_nil] at ok
-              let _ ⬝ₒₖ kok' := ok
+        let rec hp : {K' : CallStack} -> {gets : Option Nat} -> K'.prom = [] ->
+                     CallStack.Okay Pr gets (K ⬝ ⟨f, ⟨g :: unpr, prom⟩, X, c⟩ ++ K') ->
+                     CallStack.Okay Pr gets (K ⬝ ⟨f, ⟨unpr, g.ret :: prom⟩, X, c⟩ ++ K') ∧
+                     CallStack.Okay Pr none {⟨g.f, ∅, g.args, codeEntry Pr g.f⟩} ∧
+                     g.ret = Pr.funs[g.f]!.fsig.ret
+          | .nil, gets, _, ok => by
+            rw[CallStack.append_nil] at *
+            apply And.intro <;> try (apply And.intro)
+            · exact sorry
+            · apply (.nil ⬝ₒₖ ·)
               let glt : g.f < Pr.size := by
                 simp[Program.size]
+                rw[← List.length_map (·.fsig)]
+                exact ok.head.ρₒₖ.unpr.head'.flt
+              apply StackFrame.Okay.mk
+              · exact SpawnDeque.empty_okay
+              · exact rfl
+              · exact (entry_okay Prok glt sorry).cₒₖ''
+              · exact glt
+            · let gflt := ok.head.ρₒₖ.unpr.head'.flt
+              let gflt' : g.f < Pr.size := by
+                simp only[Program.size]
                 rw[← List.length_map (as := Pr.funs) (·.fsig)]
-                exact kok'.ρₒₖ.unpr.head'.flt
-              let gsig : ⟨g.args.length, g.ret⟩ = Pr.funs[g.f].fsig :=
-                Pr.funs.getElem_map (·.fsig) ▸ kok'.ρₒₖ.unpr.head'.sig
-              let gsig_arity : g.args.length = Pr.funs[g.f].fsig.arity :=
-                congrArg (·.arity) gsig
-              let gsig_ret : g.ret = Pr.funs[g.f].fsig.ret :=
-                congrArg (·.ret) gsig
-              -- TODO: make version of entry_okay that works on already-getElem'd x
-              let eok : Okay Pr.fsigs Pr.funs[g.f].bsigs ⟨g.args.length, ∅⟩ Pr.funs[g.f].fsig.ret (codeEntry Pr g.f) := (entry_okay (x := g.args) Prok glt sorry gsig_arity.symm).cₒₖ
-              exact ⟨ glt, SpawnDeque.empty_okay, rfl, eok⟩
-            | K' ⬝ k', ok, p => sorry
-          exact hp K'ok p
+                exact gflt
+              let x : g.ret = Pr.fsigs[g.f].ret :=
+                congrArg (·.ret) ok.head.ρₒₖ.unpr.head'.sig
+              rw[getElem!_pos Pr.funs g.f gflt',
+                 x,
+                 List.getElem_map (·.fsig) (l := Pr.funs)]
+          | K' ⬝ k', gets, p, ok =>
+            let ⟨kp', Kp'⟩ := List.append_eq_nil_iff.mp p
+            let k'ok := ok.head
+            let ⟨K'ok', gok, glt⟩ := hp Kp' ok.tail
+            let l := K'ok'
+            let k'ok' := k'ok.castCanProm
+              (K ⬝ ⟨f, ⟨unpr, g.ret :: prom⟩, X, c⟩ ++ K').allPromoted
+              (λ (x : (K ⬝ ⟨f, ⟨g :: unpr, prom⟩, X, c⟩ ++ K').allPromoted) =>
+                 let x' : (K ⬝ ⟨f, ⟨g :: unpr, prom⟩, X, c⟩ ++ K').unpr = [] :=
+                   by simp_all[x]
+                 let x'' : g :: unpr = [] :=
+                   (List.append_eq_nil_iff.mp
+                     (List.append_eq_nil_iff.mp
+                       (CallStack.append_unpr ▸ x')).left).right
+                 by contradiction)
+            ⟨K'ok' ⬝ₒₖ k'ok', gok, glt⟩
+        let ⟨Kok, gok, glt⟩ := hp p ok
+        let prom_p : Pr.funs[g.f]!.fsig.ret :: (K ⬝ ⟨f, ⟨g :: unpr, prom⟩, X, c⟩ ++ K').prom =
+                     (K ⬝ ⟨f, ⟨unpr, g.ret :: prom⟩, X, c⟩ ++ K').prom := by
+          simp_all[CallStack.append_prom, p, glt]
+        exact cat (prom_p ▸ leaf Kok) (leaf gok)
 
     · case spoin_unpr f K ρ sc X bunpr bprom ok =>
         apply @leaf Pr (K ⬝ ⟨f, ρ, X[bunpr.args]!, codeOf Pr f bunpr⟩)
