@@ -256,6 +256,10 @@ namespace SpawnDeque
       | false, false, _, .mk u p => .mk u p
       | true, true, _, .mk u p => .mk u p
       | false, true, _, .mk u _p => .mk u rfl
+
+    theorem promote {fsigs u p g} (ok : Okay fsigs true ⟨g :: u, p⟩) :
+                    Okay fsigs true ⟨u, g.ret :: p⟩ :=
+      ⟨ok.unpr.tail, rfl⟩
   end Okay
   
   abbrev sig : SpawnDeque -> SporkSig
@@ -336,10 +340,13 @@ namespace StackFrame
                   k.c.Okay Pr.fsigs Pr.funs[k.f].bsigs k.bsig
                            (curr.elim Pr.funs[k.f].fsig.ret id)
       | .mk _f _ρ _X _c, mk _flt _ρₒₖ _cb cₒₖ => cₒₖ
-    theorem isCode {Pr canProm} : {k : StackFrame} -> (kₒₖ : k.Okay Pr none canProm) -> k.c.isCode
+    theorem cb {Pr curr canProm} : {k : StackFrame} -> (kₒₖ : k.Okay Pr curr canProm) ->
+               (if curr.isNone then k.c.isCode else k.c.isCont) = true
       | .mk _f _ρ _X _c, mk _flt _ρₒₖ cb _cₒₖ => cb
-    theorem isCont {Pr canProm ret} : {k : StackFrame} -> (kₒₖ : k.Okay Pr (some ret) canProm) -> k.c.isCont
-      | .mk _f _ρ _X _c, mk _flt _ρₒₖ cb _cₒₖ => cb
+    theorem isCode {Pr canProm} : {k : StackFrame} ->
+                   (kₒₖ : k.Okay Pr none canProm) -> k.c.isCode := cb
+    theorem isCont {Pr canProm ret} : {k : StackFrame} ->
+                   (kₒₖ : k.Okay Pr (some ret) canProm) -> k.c.isCont := cb
 
     theorem castCanProm {Pr curr canProm} : {k : StackFrame} ->
                         (canProm' : Bool) -> canProm ≤ canProm' ->
@@ -891,6 +898,7 @@ namespace Step
                          exact bbody_ok))
 
     · case promote f unpr g prom X K c K' u p ok =>
+        let kProm : K.allPromoted = true := by simp_all
         let rec hp : {K' : CallStack} -> {gets : Option Nat} -> K'.prom = [] ->
                      CallStack.Okay Pr gets (K ⬝ ⟨f, ⟨g :: unpr, prom⟩, X, c⟩ ++ K') ->
                      CallStack.Okay Pr gets (K ⬝ ⟨f, ⟨unpr, g.ret :: prom⟩, X, c⟩ ++ K') ∧
@@ -899,22 +907,30 @@ namespace Step
           | .nil, gets, _, ok => by
             rw[CallStack.append_nil] at *
             apply And.intro <;> try (apply And.intro)
-            · exact sorry
+            · exact ok.tail ⬝ₒₖ
+                (let kok := ok.head
+                 ⟨ok.head.flt,
+                  (let x := ok.head.ρₒₖ
+                   by rw[kProm] at *
+                      exact x.promote),
+                  ok.head.cb,
+                  ok.head.cₒₖ
+                  ⟩)
             · apply (.nil ⬝ₒₖ ·)
-              let glt : g.f < Pr.size := by
-                simp[Program.size]
+              let glt : g.f < Pr.funs.length := by
                 rw[← List.length_map (·.fsig)]
                 exact ok.head.ρₒₖ.unpr.head'.flt
-              apply StackFrame.Okay.mk
-              · exact SpawnDeque.empty_okay
-              · exact rfl
-              · exact (entry_okay Prok glt sorry).cₒₖ''
-              · exact glt
+              let Prsize : Pr.funs.length = Pr.fsigs.length :=
+                (List.length_map (as := Pr.funs) (·.fsig)).symm
+              let glt' := Prsize ▸ glt
+              exact StackFrame.Okay.mk glt SpawnDeque.empty_okay rfl
+                (entry_okay (canProm := true) Prok glt
+                  (List.getElem_map Func.fsig (l := Pr.funs) ▸
+                   (congrArg (·.arity) ok.head.ρₒₖ.unpr.head'.sig).symm)
+                ).cₒₖ
             · let gflt := ok.head.ρₒₖ.unpr.head'.flt
-              let gflt' : g.f < Pr.size := by
-                simp only[Program.size]
-                rw[← List.length_map (as := Pr.funs) (·.fsig)]
-                exact gflt
+              let gflt' : g.f < Pr.funs.length :=
+                List.length_map (as := Pr.funs) (·.fsig) ▸ gflt
               let x : g.ret = Pr.fsigs[g.f].ret :=
                 congrArg (·.ret) ok.head.ρₒₖ.unpr.head'.sig
               rw[getElem!_pos Pr.funs g.f gflt',
@@ -937,7 +953,8 @@ namespace Step
                  by contradiction)
             ⟨K'ok' ⬝ₒₖ k'ok', gok, glt⟩
         let ⟨Kok, gok, glt⟩ := hp p ok
-        let prom_p : Pr.funs[g.f]!.fsig.ret :: (K ⬝ ⟨f, ⟨g :: unpr, prom⟩, X, c⟩ ++ K').prom =
+        let prom_p : Pr.funs[g.f]!.fsig.ret ::
+                       (K ⬝ ⟨f, ⟨g :: unpr, prom⟩, X, c⟩ ++ K').prom =
                      (K ⬝ ⟨f, ⟨unpr, g.ret :: prom⟩, X, c⟩ ++ K').prom := by
           simp_all[CallStack.append_prom, p, glt]
         exact cat (prom_p ▸ leaf Kok) (leaf gok)
@@ -945,7 +962,8 @@ namespace Step
     · case spoin_unpr f K ρ sc X bunpr bprom ok =>
         apply @leaf Pr (K ⬝ ⟨f, ρ, X[bunpr.args]!, codeOf Pr f bunpr⟩)
         exact match ok with
-          | Kok ⬝ₒₖ ⟨flt, ⟨unpr_ok, prom_ok⟩, _, .code (.trfr (.spoin nn bunpr_ok bprom_ok))⟩ =>
+          | Kok ⬝ₒₖ ⟨flt, ⟨unpr_ok, prom_ok⟩, _,
+              .code (.trfr (.spoin nn bunpr_ok bprom_ok))⟩ =>
             let h : (ρ.push sc).sig.tail = ρ.sig := by simp
             Kok ⬝ₒₖ (goto_okay Prok flt ⟨unpr_ok.unappend.1, prom_ok⟩ (h ▸ bunpr_ok))
 
