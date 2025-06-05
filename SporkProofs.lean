@@ -3,4 +3,6 @@
 import SporkProofs.IVec
 import SporkProofs.Syntax
 import SporkProofs.Semantics
---import SporkProofs.ParReduce
+import SporkProofs.ParReduce
+import SporkProofs.Preservation
+import SporkProofs.Progress

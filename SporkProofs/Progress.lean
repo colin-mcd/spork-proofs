@@ -19,7 +19,7 @@ namespace Step
     K.allPromoted_imp_nil
       (ok.head.ρₒₖ.prom.prom_canProm_true K.allPromoted)
   
-  def progress {Pr : Program} : -- (Prok : Pr.Okay) :
+  def progress {Pr : Program} :
                (P : ThreadPool) -> P.Okay' Pr ->
                Next Pr P
     | .cat P₁ P₂, ok =>
@@ -50,13 +50,10 @@ namespace Step
     | .leaf (K ⬝ ⟨f, ρ, X, .code (.trfr (.goto bnext))⟩), ok =>
       .step _ .goto
     | .leaf (K ⬝ ⟨f, ρ, X, .code (.trfr (.ite cond bthen belse))⟩), ok =>
-      let condₒₖ := match ok.to_okay.get.head.cₒₖ.c.t with
-        | .ite condₒₖ bthenₒₖ belseₒₖ => condₒₖ
-      let c? := cond.eval X condₒₖ
-      if p : c? = 0 then
-        .step _ (.ite_false (p ▸ .mk condₒₖ))
+      if p : cond.eval X ok.to_okay.get.head.cₒₖ.c.t.ite_cond = 0 then
+        .step _ (.ite_false (p ▸ .mk ok.to_okay.get.head.cₒₖ.c.t.ite_cond))
       else
-        .step _ (.ite_true (.mk condₒₖ) p)
+        .step _ (.ite_true (.mk ok.to_okay.get.head.cₒₖ.c.t.ite_cond) p)
     | .leaf (K ⬝ ⟨f, ρ, X, .code (.trfr (.call g args bret))⟩), ok =>
       .step _ .call
     | .leaf (K ⬝ ⟨f, ρ, X, .cont bnext⟩ ⬝ ⟨g, ρempty, Y, .code (.trfr (.retn y))⟩), ok =>
@@ -71,8 +68,18 @@ namespace Step
         by cases ρempty; cases ok.to_okay.get.head.cₒₖ.c.t; simp_all; rfl
       p ▸ .result g Y y
     | .leaf (K ⬝ ⟨f, ρ, X, .code (.trfr (.spork bbody g args))⟩), ok =>
-      sorry
+      .step _ .spork
     | .leaf (K ⬝ ⟨f, ρ, X, .code (.trfr (.spoin bunpr bprom))⟩), ok =>
-      -- either spoin_unpr or spoin_prom->blocked
-      sorry
+      match ρ with
+        | ⟨[], []⟩ =>
+          let x := ok.to_okay.get.head.cₒₖ.c.t.spoin_sn_nonnil
+          by contradiction
+        | ⟨u :: us, ps⟩ =>
+          let sc := (u :: us).getLast (by simp)
+          let us' := (u :: us).dropLast
+          let pf : SpawnDeque.mk (u :: us) ps = (SpawnDeque.mk us' ps).push sc :=
+            by simp; symm; exact (u :: us).dropLast_concat_getLast (by simp)
+          pf ▸ .step _ .spoin_unpr
+        | ⟨[], p :: ps⟩ =>
+          .blocked _ _ _ _ _ _ _
 end Step

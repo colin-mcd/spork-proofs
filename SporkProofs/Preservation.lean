@@ -123,7 +123,7 @@ namespace Step
         exact cat (preserve_retjoin P_P' Pok ▸ P1ok) (preservation Prok Pok P_P')
 
     · case stmt f K ρ X e v c a ok =>
-        apply @leaf Pr (K ⬝ ⟨f, ρ, X ++ [v], .code c⟩)
+        apply @leaf Pr (K ⬝ ⟨f, ρ, X.concat v, .code c⟩)
         exact match ok with
            | Kok ⬝ₒₖ (.mk p ρok _ (.code (.stmt eok cok))) =>
              Kok ⬝ₒₖ (.mk p ρok rfl (.code
@@ -183,7 +183,7 @@ namespace Step
              getElem!_pos Pr.funs g glt' ▸
              congrArg₂ FuncSig.mk
                (g_args_ok.map_length (λ x xₒₖ => X[x]) ▸ Eq.symm gsig) (by simp)
-           Kok ⬝ₒₖ (goto_okay Prok flt ⟨unpr_ok.append (IVec.singleton ⟨glt, h⟩), prom_ok⟩
+           Kok ⬝ₒₖ (goto_okay Prok flt ⟨unpr_ok.concat ⟨glt, h⟩, prom_ok⟩
                      (by rw[ρ.pushsig, getElem!_pos Pr.funs g glt']
                          simp[BlockSig.spork] at bbody_ok; simp
                          exact bbody_ok))
@@ -254,7 +254,7 @@ namespace Step
           | Kok ⬝ₒₖ ⟨flt, ⟨unpr_ok, prom_ok⟩, _,
               .code (.trfr (.spoin nn bunpr_ok bprom_ok))⟩ =>
             let h : (ρ.push sc).sig.tail = ρ.sig := by simp
-            Kok ⬝ₒₖ (goto_okay Prok flt ⟨unpr_ok.unappend.1, prom_ok⟩ (h ▸ bunpr_ok))
+            Kok ⬝ₒₖ (goto_okay Prok flt ⟨unpr_ok.unconcat.1, prom_ok⟩ (h ▸ bunpr_ok))
 
     · case spoin_prom f K ρ' X bunpr bprom Y y g K_unpr_nil retok ok =>
         let g_ret_eq : g.ret = Pr.funs[g.f]!.fsig.ret :=

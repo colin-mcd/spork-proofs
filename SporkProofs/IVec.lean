@@ -48,9 +48,19 @@ namespace IVec
     | _a :: _as, _bs, cons v vs, ws => cons v (append vs ws)
 
   def unappend {α : Type} {β : α -> Sort} :
-           {l l' : List α} -> IVec β (l ++ l') -> IVec β l ×' IVec β l'
+               {l l' : List α} -> IVec β (l ++ l') -> IVec β l ×' IVec β l'
     | [], _l', xs => ⟨nil, xs⟩
     | _a :: _l, _l', v => let ⟨v1, v2⟩ := unappend v.tail; ⟨cons v.head' v1, v2⟩
 
   def singleton {α β} {a : α} (b : β a) : IVec β [a] := nil.cons b
+
+  def concat {α β} : {l : List α} -> {a : α} -> IVec β l -> β a -> IVec β (l.concat a)
+    | [], _a, nil, b => singleton b
+    | _a :: _as, _a', cons b bs, b' => cons b (concat bs b')
+
+  def unconcat {α : Type} {β : α -> Sort} :
+               {l : List α} -> {a : α} -> IVec β (l.concat a) -> IVec β l ×' β a
+    | [], _a', xs => ⟨nil, xs.head'⟩
+    | _a :: _l, _l', v => let ⟨v1, v2⟩ := unconcat v.tail; ⟨cons v.head' v1, v2⟩
+
 end IVec

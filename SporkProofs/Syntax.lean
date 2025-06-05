@@ -298,13 +298,92 @@ namespace Transfer
     | spoin
         {bunpr : Cont}
         {bprom : Cont} :
-        -- Note: not sure if introducing s, ss here
-        -- will cause lean to think pattern matching this
-        -- is noncomputable?
         (bsig_sn_nonnil : bsig.sporkNest ≠ []) ->
         bunpr.Okay bsigs bsig.spoin ->
         bprom.OkayRets bsigs bsig.spoin (bsig.sporkNest.head bsig_sn_nonnil) ->
         (spoin bunpr bprom).Okay
+
+  namespace Okay
+    -- Accessor methods
+    theorem goto_bnext {bnext} :
+                       Okay fsigs bsigs ret bsig (.goto bnext) ->
+                       bnext.Okay bsigs bsig
+      | .goto bnextₒₖ => bnextₒₖ
+
+    theorem ite_cond {cond bthen belse} :
+                     Okay fsigs bsigs ret bsig (.ite cond bthen belse) ->
+                     cond.Okay bsig.arity
+      | .ite condₒₖ _ _ => condₒₖ
+    theorem ite_bthen {cond bthen belse} :
+                      Okay fsigs bsigs ret bsig (.ite cond bthen belse) ->
+                      bthen.Okay bsigs bsig
+      | .ite _ bthenₒₖ _ => bthenₒₖ
+    theorem ite_belse {cond bthen belse} :
+                      Okay fsigs bsigs ret bsig (.ite cond bthen belse) ->
+                      belse.Okay bsigs bsig
+      | .ite _ _ belseₒₖ => belseₒₖ
+
+    theorem call_flt {f args bret} :
+                     Okay fsigs bsigs ret bsig (.call f args bret) ->
+                     f < fsigs.length
+      | .call flt _ _ _ => flt
+    theorem call_arity {f args bret} :
+                       (ok : Okay fsigs bsigs ret bsig (.call f args bret)) ->
+                       (fsigs[f]'ok.call_flt).arity = args.length
+      | .call _ arityₒₖ _ _ => arityₒₖ
+    theorem call_args {f args bret} :
+                      Okay fsigs bsigs ret bsig (.call f args bret) ->
+                      IVec (·.Okay bsig.arity) args
+      | .call _ _ argsₒₖ _ => argsₒₖ
+    theorem call_bret {f args bret} :
+                      (ok : Okay fsigs bsigs ret bsig (.call f args bret)) ->
+                      bret.OkayRets bsigs bsig (fsigs[f]'ok.call_flt).ret
+      | .call _ _ _ bretₒₖ => bretₒₖ
+
+    theorem retn_sn_nil {args} :
+                          Okay fsigs bsigs ret bsig (.retn args) ->
+                          bsig.sporkNest = []
+      | .retn n _ _ => n
+    theorem retn_length {args} :
+                        Okay fsigs bsigs ret bsig (.retn args) ->
+                        ret = args.length
+      | .retn _ l _ => l
+    theorem retn_args {args} :
+                      Okay fsigs bsigs ret bsig (.retn args) ->
+                      IVec (·.Okay bsig.arity) args
+      | .retn _ _ a => a
+
+    theorem spork_flt {bbody f args} :
+                      Okay fsigs bsigs ret bsig (.spork bbody f args) ->
+                      f < fsigs.length
+      | .spork flt _ _ _ => flt
+    theorem spork_arity {bbody f args} :
+                        (ok : Okay fsigs bsigs ret bsig (.spork bbody f args)) ->
+                        (fsigs[f]'ok.spork_flt).arity = args.length
+      | .spork _ arityₒₖ _ _ => arityₒₖ
+    theorem spork_args {bbody f args} :
+                      Okay fsigs bsigs ret bsig (.spork bbody f args) ->
+                      IVec (·.Okay bsig.arity) args
+      | .spork _ _ argsₒₖ _ => argsₒₖ
+    theorem spork_bbody {bbody f args} :
+                        (ok : Okay fsigs bsigs ret bsig (.spork bbody f args)) ->
+                        bbody.Okay bsigs (bsig.spork (fsigs[f]'ok.spork_flt).ret)
+      | .spork _ _ _ bbodyₒₖ => bbodyₒₖ
+
+    theorem spoin_sn_nonnil {bunpr bprom} :
+                            Okay fsigs bsigs ret bsig (.spoin bunpr bprom) ->
+                            bsig.sporkNest ≠ []
+      | .spoin nn _ _ => nn
+    theorem spoin_bunpr {bunpr bprom} :
+                        Okay fsigs bsigs ret bsig (.spoin bunpr bprom) ->
+                        bunpr.Okay bsigs bsig.spoin
+      | .spoin _ bunprₒₖ _ => bunprₒₖ
+    theorem spoin_bprom {bunpr bprom} :
+                        (ok : Okay fsigs bsigs ret bsig (.spoin bunpr bprom)) ->
+                        bprom.OkayRets bsigs bsig.spoin
+                          (bsig.sporkNest.head ok.spoin_sn_nonnil)
+      | .spoin _ _ bpromₒₖ => bpromₒₖ
+  end Okay
 
   instance instDecidable : (t : Transfer) -> Decidable (t.Okay fsigs bsigs ret bsig)
     | goto bnext =>

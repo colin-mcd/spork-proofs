@@ -284,7 +284,7 @@ namespace SpawnDeque
   abbrev sig : SpawnDeque -> SporkSig
     | mk u p => List.reverseAux (u.map (·.ret)) p
   abbrev push : SpawnDeque -> SpawnCall -> SpawnDeque
-    | ⟨u, p⟩, sc => ⟨u ++ [sc], p⟩
+    | ⟨u, p⟩, sc => ⟨u.concat sc, p⟩
   abbrev pop_prom : SpawnDeque -> SpawnDeque
     | ⟨sc :: u, p⟩ => ⟨u, sc.ret :: p⟩
     | ⟨[], p⟩ => ⟨[], p⟩
@@ -667,7 +667,7 @@ inductive Step (Pr : Program) : (P P' : ThreadPool) -> Type where
   | stmt {f K ρ X e v c} :
     X ⊢ₑₓₚᵣ e ⇓ v ->
     Step Pr {K ⬝ ⟨f, ρ, X, .code (.stmt e c)⟩}
-            {K ⬝ ⟨f, ρ, X ++ [v], .code c⟩}
+            {K ⬝ ⟨f, ρ, X.concat v, .code c⟩}
 
   | goto {f K ρ X bnext} :
     Step Pr {K ⬝ ⟨f, ρ, X, .code (.trfr (.goto bnext))⟩}
