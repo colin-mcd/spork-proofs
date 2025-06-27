@@ -27,13 +27,31 @@ namespace IVec
     | nil => nil
     | cons _h t => t
 
-  def map {α α' : Type} {β : α -> Sort} : {l : List α} -> ((a : α) -> β a -> α') -> IVec β l -> List α'
+  def list_map {α α' : Type} {β : α -> Sort} : {l : List α} -> ((a : α) -> β a -> α') -> IVec β l -> List α'
     | [], _f, _n => []
-    | a :: _as, f, v => f a (head' v) :: v.tail.map f
+    | a :: _as, f, v => f a (head' v) :: v.tail.list_map f
 
-  theorem map_length {α α' : Type} {β : α -> Sort} : {l : List α} -> (f : (a : α) -> β a -> α') -> (v : IVec β l) -> (l.length = (v.map f).length)
+  theorem map_length {α α' : Type} {β : α -> Sort} : {l : List α} -> (f : (a : α) -> β a -> α') -> (v : IVec β l) -> (l.length = (v.list_map f).length)
     | [], _f, _n => rfl
     | a :: as, f, cons v vs => by simp; exact map_length f vs ▸ rfl
+
+  theorem from_map {α α' : Type} {β : α -> Sort} {β' : α' -> Sort} : {l : List α} -> (f : (a : α) -> β a -> α') -> ((a : α) -> (b : β a) -> β' (f a b)) -> (v : IVec β l) -> IVec β' (list_map f v)
+    | [], _f, _g, _v => nil
+    | a :: _as, f, g, cons va vas =>
+      cons (g a va) (vas.from_map f g)
+
+  theorem from_map' {α α' : Type} {β : α -> Sort} {β' : α' -> Sort} : {l : List α} -> (f : α -> α') -> ((a : α) -> (b : β a) -> β' (f a)) -> (v : IVec β l) -> IVec β' (l.map f)
+    | [], _f, _g, _v => nil
+    | a :: _as, f, g, cons va vas =>
+      cons (g a va) (vas.from_map' f g)
+
+  theorem map {α : Type} {β β' : α -> Sort} : {l : List α} -> ((a : α) -> β a -> β' a) -> IVec β l -> IVec β' l
+    | [], _g, _v => nil
+    | a :: _as, g, v => cons (g a v.head') (v.tail.map g)
+
+  -- def mapVec {α α' : Type} {β : α -> Sort} {β : α' -> Sort} : {l : List α} -> (f :  -> IVec β l -> List α'
+  --   | [], _f, _n => []
+  --   | a :: _as, f, v => f a (head' v) :: v.tail.map f
 
   instance instDecidable {α : Type} {β : α -> Prop} [DecidablePred β] : {l : List α} -> Decidable (IVec β l)
     | [] => isTrue nil
@@ -62,5 +80,19 @@ namespace IVec
                {l : List α} -> {a : α} -> IVec β (l.concat a) -> IVec β l ×' β a
     | [], _a', xs => ⟨nil, xs.head'⟩
     | _a :: _l, _l', v => let ⟨v1, v2⟩ := unconcat v.tail; ⟨cons v.head' v1, v2⟩
+
+  def peephole {α : Type} {β : α -> Sort} :
+               {l₁ : List α} -> {a a' : α} -> {l₂ : List α} ->
+               (β a -> β a') -> IVec β (l₁ ++ [a] ++ l₂) -> IVec β (l₁ ++ [a'] ++ l₂)
+    | [], _a, _a', _l₂, ba_ba', v =>
+      cons (ba_ba' v.head') v.tail
+    | _a₁ :: _l₁, _a, _a', _l₂, ba_ba', v =>
+      cons v.head' (peephole ba_ba' v.tail)
+
+  def get_peep {α : Type} {β : α -> Sort} :
+               {l₁ : List α} -> (a : α) -> {l₂ : List α} ->
+               IVec β (l₁ ++ [a] ++ l₂) -> β a
+    | [], _a, _l₂, v => v.head'
+    | _a₁ :: _l₁, a, _l₂, v => v.tail.get_peep a
 
 end IVec

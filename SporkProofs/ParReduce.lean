@@ -32,9 +32,9 @@ def redSSA (c f red split : FuncIdx) : Func × Func :=
      block exit(a) {RETURN(a)}
    ))  
 
-theorem parSSAOkay : (parSSA 0 1).Okay [FuncSig.mk 0 1, FuncSig.mk 0 1] :=
+theorem parSSAWF : (parSSA 0 1).WF [FuncSig.mk 0 1, FuncSig.mk 0 1] :=
   by trivial
-theorem redSSAOkay :
+theorem redSSAWF :
     let fsigs := [FuncSig.mk 2 1, FuncSig.mk 1 1, FuncSig.mk 4 1, FuncSig.mk 4 1]
-    (redSSA 0 1 2 3).fst.Okay fsigs ∧ (redSSA 0 1 2 3).snd.Okay fsigs :=
+    (redSSA 0 1 2 3).fst.WF fsigs ∧ (redSSA 0 1 2 3).snd.WF fsigs :=
   by trivial

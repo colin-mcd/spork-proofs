@@ -8,11 +8,13 @@ import SporkProofs.Syntax
     getarity : List Block -> Nat
       | [] => panic "cannot infer signature of empty function!"
       | .mk bsig _ :: _ => bsig.arity
+    coderet : Code -> Option Nat
+      | .stmt _e c => coderet c
+      | .retn rs => some rs.length
+      | _ => none
     getret : List Block -> Nat
       | [] => panic "cannot infer signature of function because it has no return!"
-      | .mk _ code :: bs => match code.view.snd with
-        | Transfer.retn rs => rs.length
-        | _ => getret bs
+      | .mk _ code :: bs => (coderet code).getD (getret bs)
 
 declare_syntax_cat ssa_atom
 declare_syntax_cat ssa_unaop
@@ -109,14 +111,14 @@ macro_rules
 
   | `(goto $b ($args,*)) => `(Cont.mk ($b) list?[$args,*])
 
-  | `(CALL $f ($args,*) ⊳ $cont) => `(Transfer.call ($f) list?[$args,*] ($cont))
-  | `(RETURN ($args,*)) => `(Transfer.retn list?[$args,*])
-  | `(GOTO $b ($args,*)) => `(Transfer.goto (goto $b ($args,*)))
-  | `(SPORK ($body, $f ($args,*) ) ) => `(Transfer.spork ($body) ($f) list?[$args,*])
-  | `(SPOIN ($unpr, $prom)) => `(Transfer.spoin ($unpr) ($prom))
+  | `(CALL $f ($args,*) ⊳ $cont) => `(Code.call ($f) list?[$args,*] ($cont))
+  | `(RETURN ($args,*)) => `(Code.retn list?[$args,*])
+  | `(GOTO $b ($args,*)) => `(Code.goto (goto $b ($args,*)))
+  | `(SPORK ($body, $f ($args,*) ) ) => `(Code.spork ($body) ($f) list?[$args,*])
+  | `(SPOIN ($unpr, $prom)) => `(Code.spoin ($unpr) ($prom))
   | `(IF $cond THEN $tt ELSE $ff) =>
       elabSSAAtom cond >>= λ cond' =>
-      `(Transfer.ite ($(⟨cond'⟩)) ($tt) ($ff))
+      `(Code.ite ($(⟨cond'⟩)) ($tt) ($ff))
 
   | `(ssa_expr| $a:ssa_atom) =>
       elabSSAAtom a >>= λ a' =>
@@ -133,7 +135,7 @@ macro_rules
 
   | `([expr| $se:ssa_expr ]) => `($(⟨se.1⟩))
 
-  | `(stmts $_ { $t:term }) => `(Code.trfr ($t))
+  | `(stmts $_ { $t:term }) => `($t)
   | `(stmts $i { $x:ident ← $t:ssa_expr, $s:stmtget }) =>
       `(Code.stmt ([expr|$t]) (let $x := Var.mk ($i); stmts $(Lean.Syntax.mkNatLit i.getNat.succ) { $s }))
 

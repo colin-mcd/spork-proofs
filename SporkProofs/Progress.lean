@@ -1,79 +1,68 @@
 import SporkProofs.Syntax
 import SporkProofs.Semantics
-import SporkProofs.Preservation
 
 namespace Step
 
-  inductive Next (Pr : Program) : ThreadPool -> Type where
+  inductive Next (P : Program) : ThreadTree -> Type where
     | result (g X x) :
-        Next Pr {{⟨g, ∅, X, .code (.trfr (.retn x))⟩}}
-    | blocked (K f gret ρ X bunpr bprom) :
-        Next Pr {K ⬝ ⟨f, ⟨[], gret :: ρ⟩, X, .code (.trfr (.spoin bunpr bprom))⟩}
-    | step {P} (P') (s : Pr ⊢ P ↦ P') :
-        Next Pr P
-
-  theorem prom_imp_allPromoted
-      {Pr K get f gret ρ X c}
-      (ok : (K ⬝ ⟨f, ⟨[], gret :: ρ⟩, X, c⟩).Okay Pr get) :
-      K.unpr = [] :=
-    K.allPromoted_imp_nil
-      (ok.head.ρₒₖ.prom.prom_canProm_true K.allPromoted)
+        Next P {{⟨g, ∅, X, .code (.retn x)⟩}}
+    | blocked (K f gret π X bunpr bprom) :
+        Next P {K ⬝ ⟨f, ⟨[], gret :: π⟩, X, .code (.spoin bunpr bprom)⟩}
+    | step {R} (R') (s : P ⊢ R ↦ R') :
+        Next P R
   
-  def progress {Pr : Program} :
-               (P : ThreadPool) -> P.Okay' Pr ->
-               Next Pr P
-    | .cat P₁ P₂, ok =>
-      let P₁ok : P₁.Okay' Pr := ok.to_okay.left.to_okay'
-      let P₂ok := ok.to_okay.right.to_okay'
-      match progress P₁ P₁ok with
+  def progress {P : Program} :
+               (R : ThreadTree) -> R.WF P ->
+               Next P R
+    | .node Rp Rc, wf =>
+      let Rpwf : Rp.WF P := wf.parent
+      let Rcwf := wf.child
+      match progress Rp Rpwf with
         | .result g X x =>
-          let y := ok.to_okay.left.same_prom;
-          by contradiction
-        | .step P₁' s =>
-          .step _ (.stepₗ s)
-        | .blocked K f gret ρ X bunpr bprom =>
-          let P₁b : ThreadPool :=
-            {K ⬝ ⟨f, ⟨[], gret :: ρ⟩, X, .code (.trfr (.spoin bunpr bprom))⟩}
-          let P₁bok : P₁b.Okay' Pr := ok.to_okay.left.to_okay'
-          match progress P₂ P₂ok with
+          nomatch wf.parent_prom
+        | .step Rp' s =>
+          .step _ (congr_parent s)
+        | .blocked K f gret π X bunpr bprom =>
+          let Rpb : ThreadTree :=
+            {K ⬝ ⟨f, ⟨[], gret :: π⟩, X, .code (.spoin bunpr bprom)⟩}
+          let Rpbwf : Rpb.WF P := wf.parent
+          match progress Rc Rcwf with
             | .result g Y y =>
               .step _ (.spoin_prom (g := ⟨g, default /- doesn't matter -/, gret⟩)
-                         (prom_imp_allPromoted ok.to_okay.left.get))
-            | .blocked K' f' gret' ρ' X' bunpr' bprom' =>
-              let z := ok.to_okay.right.same_prom
-              by contradiction
-            | .step P₂' s =>
-              .step _ (.stepᵣ s)
-    | .leaf (K ⬝ ⟨f, ρ, X, .code (.stmt e c)⟩), ok =>
-      let eₒₖ := ok.to_okay.get.head.cₒₖ.c.e
-      .step _ (.stmt (Expr.Eval.mk eₒₖ))
-    | .leaf (K ⬝ ⟨f, ρ, X, .code (.trfr (.goto bnext))⟩), ok =>
+                         (K.allPromoted_iff_nil.mp
+                           (wf.parent.get.head.ρwf.prom.prom_canProm_true
+                             K.allPromoted)))
+            | .blocked K' f' gret' π' X' bunpr' bprom' =>
+              nomatch wf.child_prom
+            | .step Rc' s =>
+              .step _ (congr_child s)
+    | .thread (K ⬝ ⟨f, ρ, X, .code (.stmt e c)⟩), wf =>
+      .step _ (.stmt (.mk wf.get.head.cwf.c.stmt_expr))
+    | .thread (K ⬝ ⟨f, ρ, X, .code (.goto bnext)⟩), wf =>
       .step _ .goto
-    | .leaf (K ⬝ ⟨f, ρ, X, .code (.trfr (.ite cond bthen belse))⟩), ok =>
-      if p : cond.eval X ok.to_okay.get.head.cₒₖ.c.t.ite_cond = 0 then
-        .step _ (.ite_false (p ▸ .mk ok.to_okay.get.head.cₒₖ.c.t.ite_cond))
+    | .thread (K ⬝ ⟨f, ρ, X, .code (.ite cond bthen belse)⟩), wf =>
+      if p : cond.eval X wf.get.head.cwf.c.ite_cond = 0 then
+        .step _ (.ite_false (p ▸ .mk wf.get.head.cwf.c.ite_cond))
       else
-        .step _ (.ite_true (.mk ok.to_okay.get.head.cₒₖ.c.t.ite_cond) p)
-    | .leaf (K ⬝ ⟨f, ρ, X, .code (.trfr (.call g args bret))⟩), ok =>
+        .step _ (.ite_true (.mk wf.get.head.cwf.c.ite_cond) p)
+    | .thread (K ⬝ ⟨f, ρ, X, .code (.call g args bret)⟩), wf =>
       .step _ .call
-    | .leaf (K ⬝ ⟨f, ρ, X, .cont bnext⟩ ⬝ ⟨g, ρempty, Y, .code (.trfr (.retn y))⟩), ok =>
+    | .thread (K ⬝ ⟨f, ρ, X, .cont bnext⟩ ⬝ ⟨g, ρempty, Y, .code (.retn y)⟩), wf =>
       let p : ρempty = ∅ :=
-        by cases ρempty; cases ok.to_okay.get.head.cₒₖ.c.t; simp_all; rfl
+        by cases ρempty <;> cases wf.get.head.cwf.c <;> simp_all; rfl
       p ▸ .step _ .retn
-    | .leaf (K ⬝ ⟨f, ρ, X, .code c⟩ ⬝ ⟨g, ρempty, Y, .code (.trfr (.retn y))⟩), ok =>
-      let x := ok.to_okay.get.tail.head.isCont
-      by contradiction
-    | .leaf (.nil ⬝ ⟨g, ρempty, Y, .code (.trfr (.retn y))⟩), ok =>
+    | .thread (K ⬝ ⟨f, ρ, X, .code c⟩ ⬝ ⟨g, ρempty, Y, .code (.retn y)⟩), wf =>
+      nomatch wf.get.tail.head.isCont
+    | .thread (.nil ⬝ ⟨g, ρempty, Y, .code (.retn y)⟩), wf =>
       let p : ρempty = ∅ :=
-        by cases ρempty; cases ok.to_okay.get.head.cₒₖ.c.t; simp_all; rfl
+        by cases ρempty <;> cases wf.get.head.cwf.c <;> simp_all; rfl
       p ▸ .result g Y y
-    | .leaf (K ⬝ ⟨f, ρ, X, .code (.trfr (.spork bbody g args))⟩), ok =>
+    | .thread (K ⬝ ⟨f, ρ, X, .code (.spork bbody g args)⟩), wf =>
       .step _ .spork
-    | .leaf (K ⬝ ⟨f, ρ, X, .code (.trfr (.spoin bunpr bprom))⟩), ok =>
+    | .thread (K ⬝ ⟨f, ρ, X, .code (.spoin bunpr bprom)⟩), wf =>
       match ρ with
         | ⟨[], []⟩ =>
-          let x := ok.to_okay.get.head.cₒₖ.c.t.spoin_sn_nonnil
-          by contradiction
+          nomatch wf.get.head.cwf.c.spoin_sn_nonnil
         | ⟨u :: us, ps⟩ =>
           let sc := (u :: us).getLast (by simp)
           let us' := (u :: us).dropLast
