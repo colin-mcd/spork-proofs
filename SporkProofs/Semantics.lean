@@ -623,6 +623,23 @@ namespace ThreadTree
     | thread K => K.prom
     | node Rp _Rc => Rp.prom.tail
 
+  @[simp] def split : ThreadTree -> CallStack × List ThreadTree
+    | thread K => ⟨K, []⟩
+    | node Rp Rc => let ⟨K, Rs⟩ := split Rp; ⟨K, Rc :: Rs⟩
+
+  @[simp] def join : CallStack × List ThreadTree -> ThreadTree
+    | ⟨K, []⟩ => thread K
+    | ⟨K, R :: Rs⟩ => node (join ⟨K, Rs⟩) R
+
+  @[simp] theorem split_join : {KRs : CallStack × List ThreadTree} -> split (join KRs) = KRs
+    | ⟨K, []⟩ => by simp
+    | ⟨K, R :: Rs⟩ => by simp[split_join (KRs := ⟨K, Rs⟩)]
+
+  @[simp] theorem join_split : {R : ThreadTree} -> join (split R) = R
+    | thread K => by simp
+    | node Rp Rc => by simp[join_split (R := Rp)]
+
+
   @[simp] def spawn (P : Program) (f : FuncIdx) (args : List Val) : ThreadTree :=
     thread (.nil ⬝ ⟨f, ∅, args, .codeEntry P f⟩)
 
@@ -768,4 +785,51 @@ namespace Steps
     hAppend := append
   instance {P : Program} {R R' : ThreadTree} : Singleton (P ⊢ R ↦ R') (P ⊢ R ↦* R') where
     singleton := cons nil
+
+  @[simp] def concat {P : Program} : {R R' R'' : ThreadTree} ->
+                (P ⊢ R ↦ R') -> (P ⊢ R' ↦* R'') -> (P ⊢ R ↦* R'')
+    | _R, _R', .(_R'), ss', nil => {ss'}
+    | _R, _R', _R'', ss', cons ss s => cons (concat ss' ss) s
+
+  universe u
+  def byInd {Q : ThreadTree -> Sort u}
+            {P : Program} :
+            {Rₛ Rₑ : ThreadTree} ->
+            Q Rₛ ->
+            ((Rᵢ Rᵢ₁ : ThreadTree) -> Q Rᵢ -> P ⊢ Rᵢ ↦ Rᵢ₁ -> Q Rᵢ₁) ->
+            P ⊢ Rₛ ↦* Rₑ ->
+            Q Rₑ
+    | Rₛ, .(Rₛ), n, _c, nil => n
+    | Rₛ, Rₑ, n, c, @Steps.cons .(P) .(Rₛ) R₁ₑ .(Rₑ) ss s =>
+      c R₁ₑ Rₑ (byInd n c ss) s
+
+  def byIndR {Q : ThreadTree -> Sort u}
+            {P : Program} :
+            {Rₛ Rₑ : ThreadTree} ->
+            Q Rₑ ->
+            ((Rᵢ Rᵢ₁ : ThreadTree) -> P ⊢ Rᵢ ↦ Rᵢ₁ -> Q Rᵢ₁ -> Q Rᵢ) ->
+            P ⊢ Rₛ ↦* Rₑ ->
+            Q Rₛ
+    | Rₛ, .(Rₛ), n, _c, nil => n
+    | Rₛ, Rₑ, n, c, @Steps.cons .(P) .(Rₛ) R₁ₑ .(Rₑ) ss s =>
+      byIndR (c R₁ₑ Rₑ s n) c ss
+
+  -- | congr_parent {Rp Rp' Rc} :
+  --   Step P Rp Rp' ->
+  --   Step P (Rp.node Rc) (Rp'.node Rc)
+
+  -- | congr_child {Rp Rc Rc'} :
+  --   Step P Rc Rc' ->
+  --   Step P (.node Rp Rc) (.node Rp Rc')
+
+  def congr_parent {P} {Rp Rp' Rc : ThreadTree} :
+                   P ⊢ Rp ↦* Rp' -> P ⊢ (Rp.node Rc) ↦* (Rp'.node Rc)
+    | .nil => .nil
+    | .cons ss s => .cons ss.congr_parent s.congr_parent
+
+  def congr_child {P} {Rp Rc Rc' : ThreadTree} :
+                  P ⊢ Rc ↦* Rc' -> P ⊢ (Rp.node Rc) ↦* (Rp.node Rc')
+    | .nil => .nil
+    | .cons ss s => .cons ss.congr_child s.congr_child
+
 end Steps

@@ -275,3 +275,13 @@ theorem inlinedFuncWF {fsigs} {f g : Func} {gidx : FuncIdx}
                       (gsig : fsigs[gidx] = g.fsig) (wf : f.WF fsigs) :
                       (inlinedFunc f g gidx).WF fsigs :=
   inlinedFuncHWF gwf glt gsig ((List.append_nil f.blocks).symm ▸ wf)
+
+namespace Program
+  def inlineCallsInFunc : (P : Program) -> (fidx gidx : FuncIdx) -> (g : Func) -> Program
+    | .mk funs, fidx, gidx, g =>
+      .mk (funs.mapIdx (λ i f => if i = fidx then inlinedFunc f g gidx else f))
+
+  def inlineCalls : (P : Program) -> (gidx : FuncIdx) -> (g : Func) -> Program
+    | .mk funs, gidx, g => .mk (funs.mapIdx (λ i f => if i = gidx then f else inlinedFunc f g gidx))
+
+end Program
