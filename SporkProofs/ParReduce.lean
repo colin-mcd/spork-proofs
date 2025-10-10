@@ -26,9 +26,9 @@ def redSSA (c f red split : FuncIdx) : Func × Func :=
    func (
      block spwn(z,a,i,j) {i₁ ← i + 1, k ← i₁ + j, m ← k / 2, SPORK (goto left(z,i₁,m,j), red(z,z,m,j))},
      block left(z,i,m,j) sporks (1) {CALL red(z,z,i,m) ⊳ goto middle(z,m,j)},
-     block middle(z,m,j,a) sporks (1) {SPOIN(goto leftover(z,m,j,a), goto join(a))},
+     block middle(z,m,j,a) sporks (1) {SPOIN(goto leftover(z,m,j,a), goto merge(a))},
      block leftover(z,m,j,a) {CALL red(z,a,m,j) ⊳ goto exit()},
-     block join(a,a₁) {CALL c(a,a₁) ⊳ goto exit()},
+     block merge(a,a₁) {CALL c(a,a₁) ⊳ goto exit()},
      block exit(a) {RETURN(a)}
    ))  
 

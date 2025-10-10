@@ -6,13 +6,14 @@ inductive StackFrameCode : Type
   | code (c : Code)
   | cont (b : Cont)
 
-inductive SpawnCall : Type where
-  | mk (f : FuncIdx) (args : List Val) (ret : Nat)
+inductive SpawnBlock : Type where
+  | mk (c : Cont) (bsig: BlockSig) -- block index b, exits with n values
+-- abbrev SpawnBlock: Type := Cont
 
 inductive SpawnDeque : Type where
   -- unpromoted sporks, oldest first (queue)
   -- promoted sporks, oldest last (stack)
-  | mk (unpr : List SpawnCall) (prom : SporkSig)
+  | mk (unpr : List SpawnBlock) (prom : List SpawnBlock)
 
 inductive StackFrame : Type
   | mk (f : FuncIdx)
@@ -30,34 +31,34 @@ inductive ThreadTree : Type where
 
 
 namespace ValMap
-  instance : GetElem ValMap Var Val (λ X x => x.WF X.length) where
+  instance : GetElem ValMap Var Val (·.length ⊢ · WF-var) where
     getElem X x xwf := X[x.idx]'xwf.1
 
-  instance : GetElem ValMap (List Var) (List Val) (λ X => IVec (·.WF X.length)) where
+  instance : GetElem ValMap (List Var) (List Val) (λ X => IVec (X.length ⊢ · WF-var)) where
     getElem X _args argswf := argswf.list_map (λ x xwf => X[x])
 end ValMap
 
 @[simp] def valOf (p : Prop) [d : Decidable p] : Val := if decide p then 1 else 0
 
 namespace Atom
-  @[simp] def eval : (X : ValMap) -> (a : Atom) -> a.WF X.length -> Val
+  @[simp] def eval : (X : ValMap) -> (a : Atom) -> X.length ⊢ a WF-atom -> Val
     | _X, .val v, _wfᵥ => v
     | X, .var x, wfₓ =>
       let _ := match wfₓ with | .var p => p
       X[x]
 
   inductive Eval (X : ValMap) (a : Atom) : Val -> Prop where
-    | mk (wfₐ : a.WF X.length) : Eval X a (eval X a wfₐ)
+    | mk (wfₐ : X.length ⊢ a WF-atom) : Eval X a (eval X a wfₐ)
 
   notation (name := atomeval) X:arg " ⊢ₐₜₒₘ " a:arg " ⇓ " v:arg => Eval X a v
 
   namespace Eval
     instance : {X : ValMap} -> {a : Atom} -> {v : Val} -> Decidable (X ⊢ₐₜₒₘ a ⇓ v)
-      | X, a, v => decidable_of_iff (∃ p : a.WF X.length, eval X a p = v)
+      | X, a, v => decidable_of_iff (∃ p : X.length ⊢ a WF-atom, eval X a p = v)
         ⟨λ ⟨wfₐ, p⟩ => p ▸ Eval.mk wfₐ,
          λ | (Eval.mk wfₐ) => ⟨wfₐ, rfl⟩⟩
 
-    theorem wf {X : ValMap} {a : Atom} {v : Val} : Eval X a v -> a.WF X.length
+    theorem wf {X : ValMap} {a : Atom} {v : Val} : Eval X a v -> X.length ⊢ a WF-atom
       | Eval.mk wfₐ => wfₐ
     theorem eq {X : ValMap} {a : Atom} {v : Val} : (s : Eval X a v) -> eval X a (wf s) = v
       | Eval.mk wfₐ => rfl
@@ -115,7 +116,7 @@ namespace Uop
 end Uop
 
 namespace Expr
-  @[simp] def eval (X : ValMap) : (e : Expr) -> (e.WF X.length) -> Val
+  @[simp] def eval (X : ValMap) : (e : Expr) -> (X.length ⊢ e WF-expr) -> Val
     | nop a, wf =>
       let awf := match wf with | .nop awf => awf
       a.eval X awf
@@ -128,17 +129,17 @@ namespace Expr
       o.eval (a.eval X awf) (b.eval X bwf)
 
   inductive Eval (X : ValMap) (e : Expr) : Val -> Prop where
-    | mk (ewf : e.WF X.length) : Eval X e (eval X e ewf)
+    | mk (ewf : X.length ⊢ e WF-expr) : Eval X e (eval X e ewf)
 
   notation (name := expreval) X:arg " ⊢ₑₓₚᵣ " e:arg " ⇓ " v:arg => Eval X e v
 
   namespace Eval
     instance {X : ValMap} {e : Expr} {v : Val} : Decidable (X ⊢ₑₓₚᵣ e ⇓ v) :=
-      decidable_of_iff (∃ (ewf : e.WF X.length), eval X e ewf = v)
+      decidable_of_iff (∃ (ewf : X.length ⊢ e WF-expr), eval X e ewf = v)
         ⟨λ ⟨ewf, p⟩ => p ▸ mk ewf,
          λ | mk ewf => ⟨ewf, rfl⟩⟩
 
-    theorem wf {X : ValMap} {e : Expr} {v: Val} : X ⊢ₑₓₚᵣ e ⇓ v -> e.WF X.length
+    theorem wf {X : ValMap} {e : Expr} {v: Val} : X ⊢ₑₓₚᵣ e ⇓ v -> X.length ⊢ e WF-expr
       | mk ewf => ewf
     theorem eq  {X : ValMap} {e : Expr} {v: Val} : (s : X  ⊢ₑₓₚᵣ e ⇓ v) -> eval X e (wf s) = v
       | mk ewf => rfl
@@ -150,7 +151,7 @@ theorem codeOfGetElem {P : Program} {f : FuncIdx} {b : Cont}
                     P[f]![b.b]! = P[f][b.b] :=
   by rw[getElem!_pos P f pf, getElem!_pos P[f] b.b pb]
 
-theorem argsOfGetElem {x : List Var} {X : ValMap} (wf : IVec (·.WF X.length) x):
+theorem argsOfGetElem {x : List Var} {X : ValMap} (wf : IVec (X.length ⊢ · WF-var) x):
                     X[x]! = X[x] :=
   getElem!_pos X x wf
 
@@ -172,112 +173,117 @@ namespace StackFrameCode
     code P[f]!.blocks.head!.code
 
   inductive WF (fsigs bsigs bsig ret) : StackFrameCode -> Prop
-    | code {c} : c.WF fsigs bsigs ret bsig -> (code c).WF fsigs bsigs bsig ret
+    | code {c} : c.WF fsigs bsigs bsig -> (code c).WF fsigs bsigs bsig ret
     | cont {b} : b.WFRets bsigs bsig ret -> (cont b).WF fsigs bsigs bsig ret
 
   namespace WF
+    notation (name := notationwf) fsigs:arg " ; " bsigs:arg " ; " bsig:arg " ; " ret:arg " ⊢ " c:arg " WF-sfc" => WF fsigs bsigs bsig ret c
+
     instance {fsigs bsigs bsig ret} : (c : StackFrameCode) ->
-             Decidable (c.WF fsigs bsigs bsig ret)
+             Decidable (fsigs; bsigs; bsig; ret ⊢ c WF-sfc)
       | .code c =>
-        decidable_of_iff (c.WF fsigs bsigs ret bsig)
+        decidable_of_iff (fsigs; bsigs; bsig ⊢ c WF-code)
           ⟨code, λ (code p) => p⟩
       | .cont b =>
-        decidable_of_iff (b.WFRets bsigs bsig ret)
+        decidable_of_iff (bsigs; bsig ⊢ b(ret) WF-cont)
           ⟨cont, λ (cont p) => p⟩
 
     theorem c {fsigs bsigs bsig ret c} :
-             WF fsigs bsigs bsig ret (.code c) ->
-             c.WF fsigs bsigs ret bsig
+             fsigs; bsigs; bsig; ret ⊢ (.code c) WF-sfc ->
+             fsigs; bsigs; bsig ⊢ c WF-code
       | code c => c
 
     theorem b {fsigs bsigs bsig b ret} :
-             WF fsigs bsigs bsig ret (.cont b) ->
-             b.WFRets bsigs bsig ret
+             fsigs; bsigs; bsig; ret ⊢ (.cont b) WF-sfc ->
+             bsigs; bsig ⊢ b(ret) WF-cont
       | cont b => b
   end WF
 
   deriving instance DecidableEq for StackFrameCode
 end StackFrameCode
 
-namespace SpawnCall
-  @[simp] abbrev f | mk f _args _ret => f
-  @[simp] abbrev args | mk _f args _ret => args
-  @[simp] abbrev ret | mk _f _args ret => ret
+namespace SpawnBlock
+  @[simp] abbrev b | mk b _bsig => b
+  @[simp] abbrev bsig | mk _b bsig => bsig
 
-  inductive WF (fsigs : FuncSigs) (sc : SpawnCall) : Prop where
-    | mk (_ : sc.f < fsigs.length)
-         (_ : ⟨sc.args.length, sc.ret⟩ = fsigs[sc.f]) :
-         sc.WF fsigs
+  inductive WF (bsigs : BlockSigs) (bspwn : SpawnBlock) : Prop where
+    | mk (_ : bsigs; bspwn.bsig ⊢ bspwn.b WF-cont)
+         (_ : bspwn.bsig.oblg.isExit)
 
   namespace WF
-    instance {fsigs : FuncSigs} : (sc : SpawnCall) -> Decidable (sc.WF fsigs)
-      | .mk f args ret =>
-        decidable_of_iff (∃ _ : f < fsigs.length, ⟨args.length, ret⟩ = fsigs[f])
-          ⟨λ ⟨p, q⟩ => ⟨p, q⟩, λ ⟨p, q⟩ => ⟨p, q⟩⟩
+    notation (name := notationwf) bsigs:arg " ⊢ " bspwn:arg " WF-spawn" => WF bsigs bspwn
+    
+    instance {bsigs: BlockSigs} (bspwn: SpawnBlock): Decidable (bsigs ⊢ bspwn WF-spawn) :=
+      decidable_of_iff (bsigs; bspwn.bsig ⊢ bspwn.b WF-cont ∧ bspwn.bsig.oblg.isExit)
+        ⟨λ ⟨a, b⟩ => .mk a b, λ | .mk a b => ⟨a, b⟩⟩
 
-    theorem flt {fsigs} {sc : SpawnCall} : sc.WF fsigs -> sc.f < fsigs.length | mk flt _ => flt
-    theorem sig {fsigs} {sc : SpawnCall} : (wf : sc.WF fsigs) -> ⟨sc.args.length, sc.ret⟩ = fsigs[sc.f]'wf.flt | mk _ sig => sig
+    theorem b {bsigs bspwn}: bsigs ⊢ bspwn WF-spawn -> bsigs; bspwn.bsig ⊢ bspwn.b WF-cont
+      | mk b _ex => b
+    theorem isExit {bsigs bspwn}: bsigs ⊢ bspwn WF-spawn -> bspwn.bsig.oblg.isExit
+      | mk _b ex => ex
+    abbrev getExit {bsigs bspwn} (wf: bsigs ⊢ bspwn WF-spawn): Nat :=
+      bspwn.bsig.oblg.getExit wf.isExit
   end WF
   
-  deriving instance DecidableEq for SpawnCall
-end SpawnCall
+  deriving instance DecidableEq for SpawnBlock
+end SpawnBlock
 
 namespace SpawnDeque
-  @[simp] abbrev unpr : SpawnDeque -> List SpawnCall
+  @[simp] abbrev unpr : SpawnDeque -> List SpawnBlock
     | ⟨u, _p⟩ => u
-  @[simp] abbrev prom : SpawnDeque -> SporkSig
+  @[simp] abbrev prom : SpawnDeque -> List SpawnBlock
     | ⟨_u, p⟩ => p
 
-  abbrev SpawnOrder (canProm : Bool) (prom : SporkSig) : Prop :=
-    prom = (if canProm then prom else [])
+  abbrev SpawnOrder (canProm : Bool) (prom : List SpawnBlock) : Prop :=
+    prom = if canProm then prom else []
 
   namespace SpawnOrder
     theorem of_nil {canProm : Bool} : SpawnOrder canProm [] :=
       by cases canProm <;> rfl
-    theorem prom_canProm_true : (canProm : Bool) -> {gret : Nat} -> {prom : SporkSig} ->
-                                SpawnOrder canProm (gret :: prom) -> canProm = true
+    theorem prom_canProm_true : (canProm : Bool) -> {bspwn : SpawnBlock} -> {prom : List SpawnBlock} ->
+                                SpawnOrder canProm (bspwn :: prom) -> canProm = true
       | true, _gret, _prom, _so => rfl
   end SpawnOrder
 
   instance : EmptyCollection SpawnDeque := ⟨⟨[], []⟩⟩
 
-  inductive WF (fsigs : FuncSigs) (canProm : Bool) : SpawnDeque -> Prop
-    | mk {unpr : List SpawnCall} {prom : SporkSig} :
-         IVec (·.WF fsigs) unpr ->
-         SpawnOrder canProm prom ->
-         (mk unpr prom).WF fsigs canProm
+  inductive WF (bsigs: BlockSigs) (canProm: Bool) (ρ: SpawnDeque) : Prop
+    | mk (_ : IVec (bsigs ⊢ · WF-spawn) ρ.unpr) (_: SpawnOrder canProm ρ.prom)
 
   namespace WF
-    instance {fsigs canProm} : (ρ : SpawnDeque) -> Decidable (ρ.WF fsigs canProm)
+    notation (name := notationwf) bsigs:arg " ; " canProm:arg " ⊢ " ρ:arg " WF-deque" => WF bsigs canProm ρ
+  
+    instance {bsigs canProm} : (ρ : SpawnDeque) -> Decidable (bsigs; canProm ⊢ ρ WF-deque)
       | .mk u p => decidable_of_iff
-          (IVec (·.WF fsigs) u ∧ SpawnOrder canProm p)
+          (IVec (bsigs ⊢ · WF-spawn) u ∧ SpawnOrder canProm p)
           ⟨λ ⟨a, b⟩ => ⟨a, b⟩, λ ⟨a, b⟩ => ⟨a, b⟩⟩
     
-    theorem unpr {fsigs canProm} {ρ : SpawnDeque} : ρ.WF fsigs canProm -> IVec (·.WF fsigs) ρ.unpr | mk u _p => u
-    theorem prom {fsigs canProm} {ρ : SpawnDeque} : ρ.WF fsigs canProm -> SpawnOrder canProm ρ.prom | mk _u p => p
+    theorem unpr {fsigs canProm} {ρ : SpawnDeque} : fsigs; canProm ⊢ ρ WF-deque -> IVec (fsigs ⊢ · WF-spawn) ρ.unpr | mk u _p => u
+    theorem prom {fsigs canProm} {ρ : SpawnDeque} : fsigs; canProm ⊢ ρ WF-deque -> SpawnOrder canProm ρ.prom | mk _u p => p
 
-    theorem castCanProm {fsigs ρ} : {canProm : Bool} -> (canProm' : Bool) -> canProm ≤ canProm' -> WF fsigs canProm ρ -> WF fsigs canProm' ρ
+    theorem castCanProm {fsigs ρ} : {canProm : Bool} -> (canProm' : Bool) -> canProm ≤ canProm' -> fsigs; canProm ⊢ ρ WF-deque -> fsigs; canProm' ⊢ ρ WF-deque
       | false, false, _, .mk u p => .mk u p
       | true, true, _, .mk u p => .mk u p
       | false, true, _, .mk u _p => .mk u rfl
 
-    theorem promote {fsigs u p g} (wf : WF fsigs true ⟨g :: u, p⟩) :
-                    WF fsigs true ⟨u, g.ret :: p⟩ :=
+    theorem promote {fsigs u p bspwn} (wf : fsigs; true ⊢ ⟨bspwn :: u, p⟩ WF-deque) :
+                    fsigs; true ⊢ ⟨u, bspwn :: p⟩ WF-deque :=
       ⟨wf.unpr.tail, rfl⟩
 
-    theorem empty {fsigs canProm} : SpawnDeque.WF fsigs canProm ∅ :=
+    theorem empty {fsigs canProm} : fsigs; canProm ⊢ ∅ WF-deque :=
       ⟨.nil, .of_nil⟩
   end WF
   
-  @[simp] def sig : SpawnDeque -> SporkSig
-    | mk u p => List.reverseAux (u.map (·.ret)) p
-  @[simp] def push : SpawnDeque -> SpawnCall -> SpawnDeque
-    | ⟨u, p⟩, sc => ⟨u.concat sc, p⟩
+  @[simp] def out : SpawnDeque -> List SpawnBlock
+    | mk u p => List.reverseAux u p
+  @[simp] def sig (ρ : SpawnDeque) : List Nat := ρ.out.map (·.bsig.oblg.head)
+  @[simp] def push : SpawnDeque -> SpawnBlock -> SpawnDeque
+    | ⟨u, p⟩, bspwn => ⟨u.concat bspwn, p⟩
   @[simp] def pop_prom : SpawnDeque -> SpawnDeque
-    | ⟨sc :: u, p⟩ => ⟨u, sc.ret :: p⟩
+    | ⟨bspwn :: u, p⟩ => ⟨u, bspwn :: p⟩
     | ⟨[], p⟩ => ⟨[], p⟩
-  theorem pushsig (ρ : SpawnDeque) (sc : SpawnCall)
-                  : (ρ.push sc).sig = sc.ret :: ρ.sig :=
+  theorem pushsig (ρ : SpawnDeque) (sc : SpawnBlock)
+                  : (ρ.push sc).sig = sc.bsig.oblg.head :: ρ.sig :=
     by simp
 
   deriving instance DecidableEq for SpawnDeque
@@ -288,15 +294,15 @@ namespace StackFrame
   @[simp] abbrev ρ | mk _f ρ _X _c => ρ
   @[simp] abbrev X | mk _f _ρ X _c => X
   @[simp] abbrev c | mk _f _ρ _X c => c
-  @[simp] def bsig | mk _f ρ X _c => BlockSig.mk X.length ρ.sig
+--  @[simp] def bsig | mk _f ρ X _c => BlockSig.mk X.length ρ.sig
 
   inductive WF (P : Program) (curr : Option Nat) (canProm : Bool) :
                (K : StackFrame) -> Prop where
     | mk {f ρ X c} :
          (_ : f < P.size) ->
-         ρ.WF P.fsigs canProm ->
+         ρ.WF P[f].bsigs canProm ->
          (if curr.isNone then c.isCode else c.isCont) = true ->
-         c.WF P.fsigs P[f].bsigs ⟨X.length, ρ.sig⟩
+         c.WF P.fsigs P[f].bsigs ⟨X.length, sorry⟩
                 (curr.elim P[f].fsig.ret id) ->
          (mk f ρ X c).WF P curr canProm
 
@@ -304,7 +310,7 @@ namespace StackFrame
     instance {P curr canProm} : (k : StackFrame) -> Decidable (k.WF P curr canProm)
       | .mk f ρ X c =>
         decidable_of_iff (∃ _ : f < P.size,
-                          ρ.WF P.fsigs canProm ∧
+                          ρ.WF P[f].bsigs canProm ∧
                           (if curr.isNone then c.isCode else c.isCont) = true ∧
                           c.WF P.fsigs P[f].bsigs ⟨X.length, ρ.sig⟩
                             (curr.elim P[f].fsig.ret id))
@@ -435,10 +441,10 @@ namespace CallStack
   instance : Inhabited CallStack where
     default := nil
 
-  @[simp] def prom : CallStack -> SporkSig
+  @[simp] def prom : CallStack -> Oblg
     | nil => []
     | K ⬝ k => k.ρ.prom ++ prom K
-  @[simp] def unpr : CallStack -> List SpawnCall
+  @[simp] def unpr : CallStack -> List SpawnBlock
     | nil => []
     | K ⬝ k => unpr K ++ k.ρ.unpr
   @[simp] abbrev allPromoted (K : CallStack) : Bool := K.unpr = []
@@ -619,7 +625,7 @@ namespace ThreadTree
     | thread K => K.retjoin P
     | node Rp _Rc => Rp.retjoin P
 
-  @[simp] def prom : ThreadTree -> SporkSig
+  @[simp] def prom : ThreadTree -> Oblg
     | thread K => K.prom
     | node Rp _Rc => Rp.prom.tail
 
@@ -627,17 +633,17 @@ namespace ThreadTree
     | thread K => ⟨K, []⟩
     | node Rp Rc => let ⟨K, Rs⟩ := split Rp; ⟨K, Rc :: Rs⟩
 
-  @[simp] def join : CallStack × List ThreadTree -> ThreadTree
+  @[simp] def merge : CallStack × List ThreadTree -> ThreadTree
     | ⟨K, []⟩ => thread K
-    | ⟨K, R :: Rs⟩ => node (join ⟨K, Rs⟩) R
+    | ⟨K, R :: Rs⟩ => node (merge ⟨K, Rs⟩) R
 
-  @[simp] theorem split_join : {KRs : CallStack × List ThreadTree} -> split (join KRs) = KRs
+  @[simp] theorem split_merge : {KRs : CallStack × List ThreadTree} -> split (merge KRs) = KRs
     | ⟨K, []⟩ => by simp
-    | ⟨K, R :: Rs⟩ => by simp[split_join (KRs := ⟨K, Rs⟩)]
+    | ⟨K, R :: Rs⟩ => by simp[split_merge (KRs := ⟨K, Rs⟩)]
 
-  @[simp] theorem join_split : {R : ThreadTree} -> join (split R) = R
+  @[simp] theorem merge_split : {R : ThreadTree} -> merge (split R) = R
     | thread K => by simp
-    | node Rp Rc => by simp[join_split (R := Rp)]
+    | node Rp Rc => by simp[merge_split (R := Rp)]
 
 
   @[simp] def spawn (P : Program) (f : FuncIdx) (args : List Val) : ThreadTree :=
@@ -688,7 +694,7 @@ namespace ThreadTree
           ⟨λ ⟨Rwf, Rcwf, Rp, Rcp⟩ => node Rwf Rcwf Rp Rcp,
            λ | node Rwf Rcwf Rp Rcp => ⟨Rwf, Rcwf, Rp, Rcp⟩⟩
 
-    theorem spawn {P f args ret} (Pwf : P.WF) (fwf : SpawnCall.WF P.fsigs (.mk f args ret)) :
+    theorem spawn {P f args ret} (Pwf : P.WF) (fwf : SpawnBlock.WF P.fsigs (.mk f args ret)) :
                   (spawn P f args).WF P := by
       apply thread
       apply (.nil ⬝wf ·)
@@ -759,7 +765,7 @@ inductive Step (P : Program) : (R R' : ThreadTree) -> Type where
     Step P {K ⬝ ⟨f, ρ.push sc, X, .code (.spoin bunpr bprom)⟩}
             {K ⬝ ⟨f, ρ, X[bunpr.args]!, .codeOf P f bunpr⟩}
 
-  | spoin_prom {f K ρ X bunpr bprom Y y} {g : SpawnCall} :
+  | spoin_prom {f K ρ X bunpr bprom Y y} {g : SpawnBlock} :
     K.unpr = [] ->
     Step P {(K ⬝ ⟨f, ⟨[], g.ret :: ρ⟩, X, .code (.spoin bunpr bprom)⟩),
              {⟨g.f, {}, Y, .code (.retn y)⟩}}

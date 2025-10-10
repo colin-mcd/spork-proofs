@@ -148,7 +148,7 @@ theorem inlinedBlockWF
       fsigs (bsigs ++ bsigs'.map (· + extra.bsig)) ret' :=
   .mk (inlinedCodeWF bretlt extra bretsig bslen wf.1)
 
-@[simp] def inlinedFuncBody (g : Func) (bret : Cont) (sporks : SporkSig) (offset : Nat) : List Block :=
+@[simp] def inlinedFuncBody (g : Func) (bret : Cont) (sporks : Oblg) (offset : Nat) : List Block :=
   g.blocks.map (inlinedBlock bret.b (.mk offset (.mk bret.args.length sporks)))
 
 theorem inlinedFuncBodyWF
@@ -167,7 +167,7 @@ theorem inlinedFuncBodyWF
   match t with
     | .call h args bret =>
       if h = g then
-        some (Code.join e (Code.goto (.mk offset (args ++ bret.args))), bret)
+        some (Code.merge e (Code.goto (.mk offset (args ++ bret.args))), bret)
       else
         none
     | _ => none
@@ -212,7 +212,7 @@ theorem inlinedFuncHWF
             simp[heqg] at cspliteq
             simp
             let c' : Code :=
-              .join es (.goto (.mk (bacc.length + (bs.length + gacc.length + 1))
+              .merge es (.goto (.mk (bacc.length + (bs.length + gacc.length + 1))
                                    (args ++ bret.args)))
             let gacc' := inlinedFuncBody g bret bsig.sporkNest
                            (bacc ++ [Block.mk bsig c'] ++ bs ++ gacc).length
@@ -224,7 +224,7 @@ theorem inlinedFuncHWF
             simp[cspliteq] at splitwf
             let c'wf : c'.WF fsigs bsigs fsig.ret bsig := by
               simp[c', bsigs]
-              apply Code.WF.join_wf
+              apply Code.WF.merge_wf
               · exact λ ⟨i, il⟩ => splitwf.1 ⟨i, by simp_all⟩
               · apply Code.WF.goto; apply Cont.WF.mk <;> simp
                 · simp[gacc']
