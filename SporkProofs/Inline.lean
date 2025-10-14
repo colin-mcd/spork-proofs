@@ -6,7 +6,7 @@ structure Extra where
   bsig : BlockSig
 
 @[simp] def inlinedArgs (extra : Extra) (scope : Nat) (args : List Var) : List Var :=
-  args ++ (List.range' scope extra.bsig.arity).map Var.mk
+  args ++ (List.range' scope extra.bsig.Γ).map Var.mk
 
 @[simp] def inlinedCont (extra : Extra) (scope : Nat) : Cont -> Cont
   | .mk b args => .mk (b + extra.offset) (inlinedArgs extra scope args)
@@ -31,7 +31,7 @@ structure Extra where
            (inlinedCont extra scope bprom)
 
 @[simp] def inlinedBlock (bret : BlockIdx) (extra : Extra) (b : Block) : Block :=
-  Block.mk (b.bsig + extra.bsig) (inlinedCode bret extra b.bsig.arity b.code)
+  Block.mk (b.bsig + extra.bsig) (inlinedCode bret extra b.bsig.Γ b.code)
 
 theorem inlinedArgsRangeWF :
     (extraArity : Nat) -> (scope : Nat) ->
@@ -44,37 +44,37 @@ theorem inlinedArgsRangeWF :
            inlinedArgsRangeWF extraArity scope.succ)
 
 theorem inlinedArgsWF' (extra : Extra) {scope : Nat} : {args : List Var} ->
-                       IVec (·.WF scope) args -> IVec (·.WF (scope + extra.bsig.arity)) args
+                       IVec (·.WF scope) args -> IVec (·.WF (scope + extra.bsig.Γ)) args
   | [], .nil => .nil
   | _a :: _args, .cons awf argswf =>
-    .cons (Var.WF.mk (Nat.lt_add_right extra.bsig.arity awf.idx))
+    .cons (Var.WF.mk (Nat.lt_add_right extra.bsig.Γ awf.idx))
           (inlinedArgsWF' extra argswf)
 
 theorem inlinedArgsWF (extra : Extra) {scope : Nat} {args : List Var}
                       (wf : IVec (·.WF scope) args) :
-                      IVec (·.WF (scope + extra.bsig.arity)) (inlinedArgs extra scope args) :=
-  (inlinedArgsWF' extra wf).append (inlinedArgsRangeWF extra.bsig.arity scope)
+                      IVec (·.WF (scope + extra.bsig.Γ)) (inlinedArgs extra scope args) :=
+  (inlinedArgsWF' extra wf).append (inlinedArgsRangeWF extra.bsig.Γ scope)
 
 theorem inlinedContWFRets
         {bsigs bsigs' bsig rets} (extra : Extra) {c : Cont}
         (bslen : bsigs.length = extra.offset)
         (wf : c.WFRets bsigs' bsig rets) :
-        (inlinedCont extra bsig.arity c).WFRets
+        (inlinedCont extra bsig.Γ c).WFRets
           (bsigs ++ bsigs'.map (· + extra.bsig)) (bsig + extra.bsig) rets :=
   .mk (by simp[← bslen, Nat.add_comm c.b bsigs.length, wf.blt])
       (by simp[wf.bsig, Nat.add_comm c.b extra.offset, ← bslen]
-          show BlockSig.mk (c.args.length + rets + extra.bsig.arity)
+          show BlockSig.mk (c.args.length + rets + extra.bsig.Γ)
                            (bsig.sporkNest ++ extra.bsig.sporkNest) =
-               BlockSig.mk (c.args.length + extra.bsig.arity + rets)
+               BlockSig.mk (c.args.length + extra.bsig.Γ + rets)
                            (bsig.sporkNest ++ extra.bsig.sporkNest)
-          rw[Nat.add_assoc, Nat.add_comm rets extra.bsig.arity, ← Nat.add_assoc])
+          rw[Nat.add_assoc, Nat.add_comm rets extra.bsig.Γ, ← Nat.add_assoc])
       (inlinedArgsWF extra wf.args)
 
 theorem inlinedContWF
         {bsigs bsigs' bsig} (extra : Extra) {c : Cont}
         (bslen : bsigs.length = extra.offset)
         (wf : c.WF bsigs' bsig) :
-        (inlinedCont extra bsig.arity c).WF
+        (inlinedCont extra bsig.Γ c).WF
           (bsigs ++ bsigs'.map (· + extra.bsig)) (bsig + extra.bsig) :=
   (inlinedContWFRets extra bslen wf.cast0).cast0
 
@@ -94,20 +94,20 @@ theorem inlinedCodeWF
     {fsigs bsigs bsigs' ret ret' bsig bret}
     (bretlt : bret < bsigs.length)
     (extra : Extra)
-    (bretsig : bsigs[bret] = ⟨ret + extra.bsig.arity, extra.bsig.sporkNest⟩)
+    (bretsig : bsigs[bret] = ⟨ret + extra.bsig.Γ, extra.bsig.sporkNest⟩)
     (bslen : bsigs.length = extra.offset) :
     {c : Code} ->
     c.WF fsigs bsigs' ret bsig ->
-    (inlinedCode bret extra bsig.arity c).WF
+    (inlinedCode bret extra bsig.Γ c).WF
       fsigs (bsigs ++ bsigs'.map (· + extra.bsig)) ret' (bsig + extra.bsig)
   | .stmt e c, wf =>
-    .stmt (inlinedExprWF extra.bsig.arity wf.stmt_expr)
-          (by simpa[Nat.add_right_comm bsig.arity extra.bsig.arity 1]
+    .stmt (inlinedExprWF extra.bsig.Γ wf.stmt_expr)
+          (by simpa[Nat.add_right_comm bsig.Γ extra.bsig.Γ 1]
               using inlinedCodeWF (bsig := bsig.bind) bretlt extra bretsig bslen (wf.stmt_code))
   | .goto bnext, wf =>
     .goto (inlinedContWF extra bslen wf.goto_bnext)
   | .ite cond bthen belse, wf =>
-    .ite (inlinedAtomWF extra.bsig.arity wf.ite_cond)
+    .ite (inlinedAtomWF extra.bsig.Γ wf.ite_cond)
          (inlinedContWF extra bslen wf.ite_bthen)
          (inlinedContWF extra bslen wf.ite_belse)
   | .call h args bret', wf =>
@@ -140,7 +140,7 @@ theorem inlinedBlockWF
     {fsigs bsigs bsigs' ret ret' bret}
     (bretlt : bret < bsigs.length)
     (extra : Extra)
-    (bretsig : bsigs[bret] = ⟨ret + extra.bsig.arity, extra.bsig.sporkNest⟩)
+    (bretsig : bsigs[bret] = ⟨ret + extra.bsig.Γ, extra.bsig.sporkNest⟩)
     (bslen : bsigs.length = extra.offset)
     {b : Block}
     (wf : b.WF fsigs bsigs' ret) :

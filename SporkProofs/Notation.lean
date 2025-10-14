@@ -2,19 +2,41 @@
 import SporkProofs.Syntax
 -- open Lean Elab Command Term Macro
 
-@[simp] abbrev mkfunc : List Block -> Func
-  | bs => Func.mk (FuncSig.mk (getarity bs) (getret bs)) bs
+inductive UnannotatedBlock where
+  | mk (args : Scope) (c : Code)
+
+@[simp] abbrev mkfunc : List UnannotatedBlock -> Func
+  | bs => (infer_bsigs bs).elim (panic "failed to infer block signatures of function")
+                                (λ bs => Func.mk (getfsig bs) bs)
   where
-    getarity : List Block -> Nat
-      | [] => panic "cannot infer signature of empty function!"
-      | .mk bsig _ :: _ => bsig.arity
-    coderet : Code -> Option Nat
-      | .stmt _e c => coderet c
-      | .retn rs => some rs.length
-      | _ => none
-    getret : List Block -> Nat
-      | [] => panic "cannot infer signature of function because it has no return!"
-      | .mk _ code :: bs => (coderet code).getD (getret bs)
+    getfsig : List Block -> FuncSig
+    | [] => panic "cannot infer signature of empty function!"
+    | .mk ⟨Γ, r, _σ⟩ _c :: _rest => .mk Γ r
+
+    get_bsig' (bs : List (UnannotatedBlock ⊕ Block)) (b : Cont) : Option BlockSig :=
+      bs[b.b]? >>= Sum.elim (λ _ => none) (λ b => some b.bsig)
+
+    get_bsig (bs : List (UnannotatedBlock ⊕ Block)) (b : Cont) : Option (Nat × List Nat) :=
+      (get_bsig' bs b).map (λ bsig => (bsig.r, bsig.σ))
+
+    infer_bsig (bs : List (UnannotatedBlock ⊕ Block)) : Code -> Option (Nat × List Nat)
+      | .stmt _e c => infer_bsig bs c
+      | .goto bnext => get_bsig bs bnext
+      | .ite _cond bthen belse => get_bsig bs bthen <|> get_bsig bs belse
+      | .call _f _args bret => get_bsig bs bret
+      | .retn args => some (args.length, [])
+      | .spork bbody _bspwn =>
+        (get_bsig bs bbody).map (λ (r, σ) => (r, σ.tail))
+      | .spoin _bunpr bprom =>
+        (get_bsig' bs bprom).map (λ bsig => (bsig.r, (bsig.Γ - bprom.args.length) :: bsig.σ))
+
+    infer_bsigs_h (bs : List (UnannotatedBlock ⊕ Block)) : List (UnannotatedBlock ⊕ Block) :=
+      bs.map (λ b => b.elim (λ ub => (infer_bsig bs ub.2).elim b
+                                       (λ (r, σ) => .inr ⟨⟨ub.1, r, σ⟩, ub.2⟩))
+                            .inr)
+    infer_bsigs (ubs: List UnannotatedBlock) : Option (List Block) :=
+      let xs := Nat.repeat infer_bsigs_h ubs.length (ubs.map Sum.inl)
+      xs.mapM (λ x => x.elim (λ _ => none) (.some))
 
 declare_syntax_cat ssa_atom
 declare_syntax_cat ssa_unaop
@@ -22,7 +44,8 @@ declare_syntax_cat ssa_binop
 declare_syntax_cat ssa_expr
 declare_syntax_cat stmtget
 declare_syntax_cat BB
-declare_syntax_cat opt_spork_sig
+declare_syntax_cat PF
+--declare_syntax_cat opt_spork_sig
 
 --syntax "var" "⟨" term "⟩" : term
 syntax "list?" "[" term,* "]" : term
@@ -30,7 +53,7 @@ syntax (name := goto) "goto " term:max "(" term,* ")" : term
 syntax (name := GOTO) "GOTO " term:max "(" term,* ")" : term
 syntax (name := CALL) "CALL " term:max "(" term,* ")" "⊳" term : term
 syntax (name := RETURN) "RETURN " "(" term,* ")" : term
-syntax (name := SPORK) "SPORK " "(" term "," term:max "(" term,* ")" ")" : term
+syntax (name := SPORK) "SPORK " "(" term "," term ")" : term
 syntax (name := SPOIN) "SPOIN " "(" term "," term ")" : term
 syntax (name := ITE) "IF " ssa_atom " THEN " term " ELSE " term : term
 syntax num : ssa_atom
@@ -62,15 +85,17 @@ syntax term : stmtget
 syntax ident " ← " ssa_expr "," stmtget : stmtget
 syntax (name := countIdents) "countIdents " ident* : term
 syntax (name := blocklets) "blocklets " ident* " from " num " in " term : term
-syntax (name := somesporksig) ("sporks " "(" term,* ")")? : opt_spork_sig
-syntax "block " ident "(" ident,* ")" ("sporks " "(" term,* ")")? "{" stmtget "}" : BB
-syntax "func" "(" BB,* ")" : term
+--syntax (name := somesporksig) ("sporks " "(" term,* ")")? : opt_spork_sig
+--syntax "block " ident "(" ident,* ")" ("sporks " "(" term,* ")")? "{" stmtget "}" : BB
+syntax "block " ident "(" ident,* ")" "{" stmtget "}" : BB
+syntax "func" ident "(" BB,* ")" : PF
 syntax "blocksh" "⟨" BB* "⟩" "⟨" ident* "⟩" "⟨" term:max* "⟩" "⟨" term:max* "⟩" : term
 syntax "parseblocks" BB* : term
+syntax "parsefuncs" PF*: term
 
 def bbToIdent : Lean.TSyntax `BB → Lean.TSyntax `ident
   | `(BB| block $x:ident ($_args,*) {$_cs}) => x
-  | `(BB| block $x:ident ($_args,*) sporks ($_ss) {$_cs}) => x
+--  | `(BB| block $x:ident ($_args,*) sporks ($_ss) {$_cs}) => x
   | _ => panic "unknown syntax for basic block"
 
 def elabSSAAtom : Lean.Macro
@@ -114,7 +139,7 @@ macro_rules
   | `(CALL $f ($args,*) ⊳ $cont) => `(Code.call ($f) list?[$args,*] ($cont))
   | `(RETURN ($args,*)) => `(Code.retn list?[$args,*])
   | `(GOTO $b ($args,*)) => `(Code.goto (goto $b ($args,*)))
-  | `(SPORK ($body, $f ($args,*) ) ) => `(Code.spork ($body) ($f) list?[$args,*])
+  | `(SPORK ($body, $spwn)) => `(Code.spork ($body) ($spwn))
   | `(SPOIN ($unpr, $prom)) => `(Code.spoin ($unpr) ($prom))
   | `(IF $cond THEN $tt ELSE $ff) =>
       elabSSAAtom cond >>= λ cond' =>
@@ -150,6 +175,5 @@ macro_rules
   | `(func ($bbs,*)) => `(mkfunc (blocklets $(bbs.getElems.map bbToIdent)* from 0 in parseblocks $bbs*))
   | `(parseblocks) => `([])
   | `(parseblocks block $x:ident ($args:ident,*) {$cs:stmtget} $bbs:BB*) =>
-      `(Block.mk (BlockSig.mk $(Lean.Syntax.mkNatLit args.getElems.size) []) (blocklets $args* from 0 in stmts 0 {$cs}) :: parseblocks $bbs*)
-  | `(parseblocks block $x:ident ($args:ident,*) sporks ($ss:term,*) {$cs:stmtget} $bbs:BB*) =>
-      `(Block.mk (BlockSig.mk $(Lean.Syntax.mkNatLit args.getElems.size) list?[$ss,*]) (blocklets $args* from 0 in stmts 0 {$cs}) :: parseblocks $bbs*)
+      `(UnannotatedBlock.mk $(Lean.Syntax.mkNatLit args.getElems.size) (blocklets $args* from 0 in stmts 0 {$cs}) :: parseblocks $bbs*)
+
