@@ -1,17 +1,18 @@
 --import SporkProofs.IVec
 import SporkProofs.Syntax
--- open Lean Elab Command Term Macro
+import SporkProofs.WFSyntax
+open Lean Elab Macro
 
 inductive UnannotatedBlock where
-  | mk (args : Scope) (c : Code)
+  | mk (name: String) (args : Scope) (c : Code)
 
-@[simp] abbrev mkfunc : List UnannotatedBlock -> Func
-  | bs => (infer_bsigs bs).elim (panic "failed to infer block signatures of function")
-                                (λ bs => Func.mk (getfsig bs) bs)
+@[simp] abbrev mkfunc (fname : String) : List UnannotatedBlock -> Func
+  | bs => let bs' := infer_bsigs bs
+          Func.mk (getfsig bs') bs'
   where
     getfsig : List Block -> FuncSig
-    | [] => panic "cannot infer signature of empty function!"
-    | .mk ⟨Γ, r, _σ⟩ _c :: _rest => .mk Γ r
+      | [] => panic "cannot infer signature of empty function!"
+      | .mk ⟨Γ, r, _σ⟩ _c :: _rest => .mk Γ r
 
     get_bsig' (bs : List (UnannotatedBlock ⊕ Block)) (b : Cont) : Option BlockSig :=
       bs[b.b]? >>= Sum.elim (λ _ => none) (λ b => some b.bsig)
@@ -31,12 +32,27 @@ inductive UnannotatedBlock where
         (get_bsig' bs bprom).map (λ bsig => (bsig.r, (bsig.Γ - bprom.args.length) :: bsig.σ))
 
     infer_bsigs_h (bs : List (UnannotatedBlock ⊕ Block)) : List (UnannotatedBlock ⊕ Block) :=
-      bs.map (λ b => b.elim (λ ub => (infer_bsig bs ub.2).elim b
-                                       (λ (r, σ) => .inr ⟨⟨ub.1, r, σ⟩, ub.2⟩))
+      bs.map (λ b => b.elim (λ ub => (infer_bsig bs ub.3).elim b
+                                       (λ (r, σ) => .inr ⟨⟨ub.2, r, σ⟩, ub.3⟩))
                             .inr)
-    infer_bsigs (ubs: List UnannotatedBlock) : Option (List Block) :=
+    infer_bsigs (ubs: List UnannotatedBlock) : List Block :=
       let xs := Nat.repeat infer_bsigs_h ubs.length (ubs.map Sum.inl)
-      xs.mapM (λ x => x.elim (λ _ => none) (.some))
+      xs.map (·.elim (λ ub => panic ("failed to infer signature for block " ++ ub.1 ++ " in function " ++ fname)) (·))
+
+def makeprogram (F : List Func) : Program :=
+  Program.mk F
+
+-- def makeprogram (F : List Func) : Program :=
+--   let P := Program.mk F
+--   if P WF-program then
+--     P
+--   else
+--     let _ : Inhabited Program := ⟨P⟩
+--     let _ : List String :=
+--       P.funs.zipIdx.filter (¬ P ⊢ ·.1 WF-func) |>
+--       .map (λ (f, i) => let bs : List (Block × Nat) := f.blocks.zipIdx.filter (¬ P; f.B ⊢ ·.1 WF-block)
+--                         sorry)
+--     panic "ill-formed program"
 
 declare_syntax_cat ssa_atom
 declare_syntax_cat ssa_unaop
@@ -45,7 +61,6 @@ declare_syntax_cat ssa_expr
 declare_syntax_cat stmtget
 declare_syntax_cat BB
 declare_syntax_cat PF
---declare_syntax_cat opt_spork_sig
 
 --syntax "var" "⟨" term "⟩" : term
 syntax "list?" "[" term,* "]" : term
@@ -84,19 +99,31 @@ syntax "stmts " num "{" stmtget "}" : term
 syntax term : stmtget
 syntax ident " ← " ssa_expr "," stmtget : stmtget
 syntax (name := countIdents) "countIdents " ident* : term
-syntax (name := blocklets) "blocklets " ident* " from " num " in " term : term
---syntax (name := somesporksig) ("sporks " "(" term,* ")")? : opt_spork_sig
---syntax "block " ident "(" ident,* ")" ("sporks " "(" term,* ")")? "{" stmtget "}" : BB
+syntax (name := blockletssyntax) "blocklets " ident* " from " num " in " term : term
 syntax "block " ident "(" ident,* ")" "{" stmtget "}" : BB
-syntax "func" ident "(" BB,* ")" : PF
-syntax "blocksh" "⟨" BB* "⟩" "⟨" ident* "⟩" "⟨" term:max* "⟩" "⟨" term:max* "⟩" : term
+syntax "block " "(" ident,* ")" "{" stmtget "}" : term
+syntax "func " ident "(" BB,* ")" : PF
+syntax "func " "(" BB,* ")" : term
 syntax "parseblocks" BB* : term
 syntax "parsefuncs" PF*: term
+syntax "PROGRAM" "(" PF,* ")" : term
 
 def bbToIdent : Lean.TSyntax `BB → Lean.TSyntax `ident
   | `(BB| block $x:ident ($_args,*) {$_cs}) => x
 --  | `(BB| block $x:ident ($_args,*) sporks ($_ss) {$_cs}) => x
   | _ => panic "unknown syntax for basic block"
+
+def identToStr : Lean.TSyntax `ident → Lean.TSyntax `term
+  | `($x:ident) => Lean.Syntax.mkStrLit ((Lean.TSyntax.getId x).toString)
+  | _ => panic "expected identifier in identToStr"
+
+def bbToStr : Lean.TSyntax `BB → Lean.TSyntax `term
+  | `(BB| block $x:ident ($_args,*) {$_cs}) => identToStr x -- Lean.Syntax.mkStrLit ((Lean.TSyntax.getId x).toString)
+  | _ => panic "unknown syntax for basic block"
+
+def pfToIdent : Lean.TSyntax `PF → Lean.TSyntax `ident
+  | `(PF| func $x:ident ($_bb,*)) => x
+  | _ => panic "unknown syntax for function"
 
 def elabSSAAtom : Lean.Macro
   | `(ssa_atom| $n:num) => `(Atom.val ($n))
@@ -170,10 +197,19 @@ macro_rules
 
   | `(blocklets from $_ in $t) => `($t)
   | `(blocklets $x:ident $xs:ident* from $i in $t) =>
-      `(let $x := $i; blocklets $xs* from $(Lean.Syntax.mkNatLit i.getNat.succ) in $t)
+      `(let $x := $i
+        blocklets $xs* from $(Lean.Syntax.mkNatLit i.getNat.succ) in $t)
 
-  | `(func ($bbs,*)) => `(mkfunc (blocklets $(bbs.getElems.map bbToIdent)* from 0 in parseblocks $bbs*))
+--  | `(PF|func $x:ident ($bbs,*)) => `(mkfunc $(identToStr x) (blocklets $(bbs.getElems.map bbToIdent)* from 0 in parseblocks $bbs*))
+  | `(func ($bbs,*)) => `(mkfunc "_" (blocklets $(bbs.getElems.map bbToIdent)* from 0 in parseblocks $bbs*))
+  | `(parsefuncs) => `([])
+  | `(parsefuncs func $x:ident ($bbs,*) $pfs:PF*) =>
+    `(mkfunc $(identToStr x) (blocklets $(bbs.getElems.map bbToIdent)* from 0 in parseblocks $bbs*) :: parsefuncs $pfs*)
+  | `(PROGRAM ($pfs,*)) =>
+    `(makeprogram (blocklets $(pfs.getElems.map pfToIdent)* from 0 in parsefuncs $pfs*))
+
   | `(parseblocks) => `([])
   | `(parseblocks block $x:ident ($args:ident,*) {$cs:stmtget} $bbs:BB*) =>
-      `(UnannotatedBlock.mk $(Lean.Syntax.mkNatLit args.getElems.size) (blocklets $args* from 0 in stmts 0 {$cs}) :: parseblocks $bbs*)
-
+      `(UnannotatedBlock.mk $(identToStr x) $(Lean.Syntax.mkNatLit args.getElems.size) (blocklets $args* from 0 in stmts 0 {$cs}) :: parseblocks $bbs*)
+  | `(block ($args:ident,*) {$cs:stmtget}) =>
+      `(UnannotatedBlock.mk "_" $(Lean.Syntax.mkNatLit args.getElems.size) (blocklets $args* from 0 in stmts 0 {$cs}))

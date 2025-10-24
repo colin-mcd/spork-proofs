@@ -9,7 +9,15 @@ namespace HeadIs
     match (generalizing := true) l, h with
       | a :: as, mk p => by simp
 
+  theorem nonnil_map {α β : Type} {l : List α} {m : α -> β} {b : β} (h : HeadIs l m b) : l.map m ≠ [] :=
+    match (generalizing := true) l, h with
+      | a :: as, mk p => by simp
+
   theorem headeq {α β : Type} {l : List α} {m : α -> β} {b : β} (h : HeadIs l m b) : m (l.head h.nonnil) = b :=
+    match (generalizing := true) l, h with
+      | _a :: _as, mk p => Option.some_inj.mp p
+
+  theorem headeq_map {α β : Type} {l : List α} {m : α -> β} {b : β} (h : HeadIs l m b) : (l.map m).head h.nonnil_map = b :=
     match (generalizing := true) l, h with
       | _a :: _as, mk p => Option.some_inj.mp p
 
@@ -21,10 +29,16 @@ namespace HeadIs
     · case cons => rfl
 
   theorem zero_lt {α β : Type} : {l : List α} -> {m : α -> β} -> {b : β} -> (h : HeadIs l m b) -> 0 < l.length
-    | _ :: _, _, _, _ => by simp    
+    | _ :: _, _, _, _ => by simp
+
+  theorem zero_lt_map {α β : Type} : {l : List α} -> {m : α -> β} -> {b : β} -> (h : HeadIs l m b) -> 0 < (l.map m).length
+    | _ :: _, _, _, _ => by simp
 
   theorem get0eq {α β : Type} {l : List α} {m : α -> β} {b : β} (h : HeadIs l m b) : m (l[0]'h.zero_lt) = b :=
     List.head_eq_getElem h.nonnil ▸ headeq h
+
+  theorem get0eq_map {α β : Type} {l : List α} {m : α -> β} {b : β} (h : HeadIs l m b) : (l.map m)[0]'h.zero_lt_map = b :=
+    List.head_eq_getElem h.nonnil_map ▸ headeq_map h
 
   theorem headtail {α β : Type} {l : List α} {m : α -> β} {b : β} (h : HeadIs l m b) : l = l.head h.nonnil :: l.tail :=
     by cases l

@@ -2,25 +2,39 @@ import SporkProofs.Syntax
 import SporkProofs.Notation
 import SporkProofs.WFSyntax
 
-def parSSAexample: Program :=
-  let f := 0
-  let g := 1
-  .mk [
-    func ()
-    func (
-      block start() {SPORK (goto body(), goto spwn())},
-      block body() {CALL f() ⊳ goto cont()},
-      block cont(x) {SPOIN (goto unpr(x), goto prom(x))},
-      block unpr(x) {CALL g() ⊳ goto ret(x)},
-      block prom(x, y) {GOTO ret(x,y)},
-      block ret(x, y) {RETURN(x, y)},
-      block spwn() {CALL g() ⊳ goto exit()},
-      block exit(y) {RETURN(y)}
-    )]
+def fibExample: Program :=
+  PROGRAM (
+    func main(
+      block start() {n ← 10, CALL fib(n) ⊳ goto ret()},
+      block ret(r) {RETURN(r)}
+    ),
+    func fib(
+      block start(n) {SPORK (goto body(n), goto spwn(n))},
+      block body(n) {n₁ ← n - 1, CALL fib(n₁) ⊳ goto cont(n)},
+      block cont(n, r₁) {SPOIN (goto unpr(n, r₁), goto prom(r₁))},
+      block unpr(n, r₁) {n₂ ← n - 2, CALL fib(n₂) ⊳ goto ret(r₁)},
+      block prom(r₁, r₂) {GOTO ret(r₁,r₂)},
+      block ret(r₁, r₂) {r ← r₁ + r₂, RETURN(r)},
+      block spwn(n) {n₂ ← n - 2, CALL fib(n₂) ⊳ goto exit()},
+      block exit(r₂) {RETURN(r₂)}
+    )
+  )
 
+def parExample (f g : FuncIdx) : Func := func (
+    block start() {SPORK (goto body(), goto spwn())},
+    block body() {CALL f() ⊳ goto cont()},
+    block cont(a) {SPOIN (goto unpr(a), goto prom(a))},
+    block unpr(a) {CALL g() ⊳ goto ret(a)},
+    block prom(r₁, r₂) {GOTO ret(r₁,r₂)},
+    block ret(a, b) {RETURN(a,b)},
+    block spwn() {CALL g() ⊳ goto exit()},
+    block exit(b) {RETURN(b)}
+  )
 
-def redSSA (c f red : FuncIdx) : Func :=
-  func (
+theorem parExampleWF : [⟨0, 1⟩, ⟨0, 1⟩] ⊢ (parExample 0 1) WF-func :=
+  by trivial
+
+def reduceExample (f c reduce : FuncIdx) : Func := func (
     block start(z,a,i,j) {GOTO guard(z,i,j,a)},
     block guard(z,i,j,a) {b ← i >= j, IF b THEN goto done(a) ELSE goto iter(z,i,j,a)},
     block done(a) {RETURN(a)},
@@ -31,17 +45,14 @@ def redSSA (c f red : FuncIdx) : Func :=
     block next(z,i,j,a) {i₁ ← i + 1, GOTO guard(z,i₁,j,a)},
     block brk(a,a₁) {CALL c(a,a₁) ⊳ goto done()},
     block split(z,i,j,a) {i₁ ← i + 1, k ← i₁ + j, m ← k / 2, SPORK (goto left(z,i₁,m,j), goto right(z,m,j))},
-    block left(z,i,m,j) {CALL red(z,z,i,m) ⊳ goto middle(z,m,j)},
+    block left(z,i,m,j) {CALL reduce(z,z,i,m) ⊳ goto middle(z,m,j)},
     block middle(z,m,j,a) {SPOIN(goto leftover(z,m,j,a), goto merge(a))},
-    block leftover(z,m,j,a) {CALL red(z,a,m,j) ⊳ goto exit()},
+    block leftover(z,m,j,a) {CALL reduce(z,a,m,j) ⊳ goto exit()},
     block merge(a,a₁) {CALL c(a,a₁) ⊳ goto exit()},
     block exit(a) {RETURN(a)},
-    block right(z,m,j) {CALL red(z,z,m,j) ⊳ goto exit()}
-   )
+    block right(z,m,j) {CALL reduce(z,z,m,j) ⊳ goto exit()}
+  )
 
-theorem parSSAWF : (parSSA 0 1).WF [FuncSig.mk 0 1, FuncSig.mk 0 1] :=
+theorem reduceExampleWF : [⟨1, 1⟩, ⟨2, 1⟩, ⟨4, 1⟩] ⊢ (reduceExample 0 1 2) WF-func :=
   by trivial
-theorem redSSAWF :
-    let fsigs := [FuncSig.mk 2 1, FuncSig.mk 1 1, FuncSig.mk 4 1, FuncSig.mk 4 1]
-    (redSSA 0 1 2).WF fsigs
-  by trivial
+

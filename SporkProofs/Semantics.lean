@@ -3,9 +3,9 @@ import SporkProofs.WFSyntax
 
 abbrev ValMap : Type := List Val
 
-inductive StackFrameCode : Type
-  | code (c : Code)
-  | cont (b : Cont)
+-- inductive StackFrameCode : Type
+--   | code (b: BlockIdx) (c : Code)
+--   | cont (b : Cont)
 
 inductive SpawnBlock : Type where
   | mk (b: BlockIdx) (args: List Val)
@@ -20,14 +20,17 @@ inductive StackFrame : Type
   | mk (f : FuncIdx)
        (ρ : SpawnDeque)
        (X : ValMap)
-       (c : StackFrameCode)
+       (b : BlockIdx)
 
 inductive CallStack : Type where
   | nil
   | cons (K : CallStack) (k : StackFrame)
 
+inductive Thread : Type where
+  | mk : CallStack -> Code -> Thread
+
 inductive ThreadTree : Type where
-  | thread : CallStack -> ThreadTree
+  | thread : Thread -> ThreadTree
   | node : ThreadTree -> ThreadTree -> ThreadTree
 
 @[simp] def valOf (p : Prop) [d : Decidable p] : Val := if decide p then 1 else 0
@@ -38,6 +41,18 @@ namespace ValMap
 
   instance : GetElem ValMap (List Var) (List Val) (λ X => IVec (X.length ⊢ · WF-var)) where
     getElem X _args argswf := argswf.list_map (λ x xwf => X[x])
+
+  theorem getElem_length {X : ValMap} {args : List Var} (wf : IVec (X.length ⊢ · WF-var) args) : X[args].length = args.length :=
+      by simp[instGetElemListVarValIVecWFLength,
+              IVec.map_length (λ x xwf => X[x]) wf]
+
+  -- theorem getElem!_length (X : ValMap) (args : List Var) : X[args]!.length = args.length := by
+  --   simp[GetElem?.getElem!, decidableGetElem?]
+  --   exact
+  --   if x : decide (IVec (X.length ⊢ · WF-var) args) then
+  --     by simp at x; simp[x, getElem_length X args x]
+  --   else
+  --     by simp at x; simp[x]
 end ValMap
 
 namespace Atom
@@ -146,76 +161,109 @@ namespace Expr
   end Eval
 end Expr
 
-theorem codeOfGetElem {P : Program} {f : FuncIdx} {b : Cont}
-                    (pf : f < P.size) (pb : b.b < P[f].size) :
-                    P[f]![b.b]! = P[f][b.b] :=
-  by rw[getElem!_pos P f pf, getElem!_pos P[f] b.b pb]
+theorem codeOfGetElem {P : Program} {f : FuncIdx} {b : BlockIdx}
+                    (pf : f < P.size) (pb : b < P[f].size) :
+                    P[f]![b]! = P[f][b] :=
+  by rw[getElem!_pos P f pf, getElem!_pos P[f] b pb]
 
 theorem argsOfGetElem {x : List Var} {X : ValMap} (wf : IVec (X.length ⊢ · WF-var) x):
                     X[x]! = X[x] :=
   getElem!_pos X x wf
 
-namespace StackFrameCode  
-  abbrev isCode | code _ => true | cont _ => false
-  abbrev isCont | code _ => false | cont _ => true
+-- namespace StackFrameCode  
+--   abbrev isCode | code _ _ => true | cont _ => false
+--   abbrev isCont | code _ _ => false | cont _ => true
 
-  @[simp] def extractD : (c : StackFrameCode) -> if isCode c then Code else Cont
-    | code c => c
-    | cont b => b
-  abbrev extractCode : (c : StackFrameCode) -> isCode c -> Code
-    | code c, _ => c
-  abbrev extractCont : (c : StackFrameCode) -> isCont c -> Cont
-    | cont b, _ => b
+--   @[simp] def extractD : (c : StackFrameCode) -> if isCode c then BlockIdx × Code else Cont
+--     | code b c => (b, c)
+--     | cont b => b
+--   abbrev extractCode : (c : StackFrameCode) -> isCode c -> BlockIdx × Code
+--     | code b c, _ => (b, c)
+--   abbrev extractCont : (c : StackFrameCode) -> isCont c -> Cont
+--     | cont b, _ => b
 
-  @[simp] abbrev codeOfBlockIdx (P : Program) (f : FuncIdx) (b : BlockIdx) : StackFrameCode :=
-    code P[f]![b]!.code
-  @[simp] abbrev codeOf (P : Program) (f : FuncIdx) (b : Cont) : StackFrameCode :=
-    code P[f]![b.b]!.code
-  @[simp] abbrev codeEntry (P : Program) (f : FuncIdx) : StackFrameCode :=
-    code P[f]!.blocks.head!.code
+--   @[simp] abbrev codeOfBlockIdx (P : Program) (f : FuncIdx) (b : BlockIdx) : StackFrameCode :=
+--     code b P[f]![b]!.code
+--   @[simp] abbrev codeOf (P : Program) (f : FuncIdx) (b : Cont) : StackFrameCode :=
+--     code b.b P[f]![b.b]!.code
+--   @[simp] abbrev codeEntry (P : Program) (f : FuncIdx) : StackFrameCode :=
+--     code P[f]!.blocks.head!.code
 
-  deriving instance DecidableEq for StackFrameCode
-end StackFrameCode
+--   deriving instance DecidableEq for StackFrameCode
+-- end StackFrameCode
 
 namespace SpawnBlock
-  @[simp] abbrev b | mk b _args => b
-  @[simp] abbrev args | mk _b args => args
+  def b | mk b _args => b
+  def args | mk _b args => args
+
+  @[simp, getters] theorem get_fix {bspwn : SpawnBlock} : mk bspwn.b bspwn.args = bspwn := rfl
+  @[simp, getters] theorem get_1 {bspwn : SpawnBlock} : bspwn.1 = bspwn.b := rfl
+  @[simp, getters] theorem get_2 {bspwn : SpawnBlock} : bspwn.2 = bspwn.args := rfl
+  @[simp, getters] theorem get_b {b args} : (mk b args).b = b := rfl
+  @[simp, getters] theorem get_args {b args} : (mk b args).args = args := rfl
+
+  @[simp] def code (P : Program) (f : FuncIdx) (bspwn : SpawnBlock) : Code :=
+    P[f]![bspwn.b]!.code
+
+  @[simp] def init : SpawnBlock := mk 0 []
   
-  deriving instance DecidableEq for SpawnBlock
+  deriving instance Repr, DecidableEq for SpawnBlock
 end SpawnBlock
 
 namespace SpawnDeque
-  @[simp] abbrev unpr : SpawnDeque -> List SpawnBlock
-    | ⟨u, _p⟩ => u
-  @[simp] abbrev prom : SpawnDeque -> List SpawnBlock
-    | ⟨_u, p⟩ => p
+  def unpr | mk u _p => u
+  def prom | mk _u p => p
 
-  instance : EmptyCollection SpawnDeque := ⟨⟨[], []⟩⟩
+  @[simp, getters] theorem get_fix {ρ : SpawnDeque} : mk ρ.unpr ρ.prom = ρ := rfl
+  @[simp, getters] theorem get_1 {ρ : SpawnDeque} : ρ.1 = ρ.unpr := rfl
+  @[simp, getters] theorem get_2 {ρ : SpawnDeque} : ρ.2 = ρ.prom := rfl
+  @[simp, getters] theorem get_unpr {u p} : (mk u p).unpr = u := rfl
+  @[simp, getters] theorem get_prom {u p} : (mk u p).prom = p := rfl
   
   @[simp] def out : SpawnDeque -> List SpawnBlock
     | mk u p => List.reverseAux u p
+  @[simp] def promsig (B : List BlockSig) (ρ : SpawnDeque) : List Nat :=
+    ρ.prom.map (B[·.b]!.r)
   @[simp] def sig (B: List BlockSig) (ρ : SpawnDeque) : List Nat :=
-    ρ.out.map (B[·.b]!.σ.head)
+    ρ.out.map (B[·.b]!.r)
   @[simp] def push : SpawnDeque -> SpawnBlock -> SpawnDeque
     | ⟨u, p⟩, bspwn => ⟨u.concat bspwn, p⟩
   @[simp] def pop_prom : SpawnDeque -> SpawnDeque
     | ⟨bspwn :: u, p⟩ => ⟨u, bspwn :: p⟩
     | ⟨[], p⟩ => ⟨[], p⟩
   theorem pushsig (B: List BlockSig) (ρ : SpawnDeque) (bspwn : SpawnBlock)
-                  : (ρ.push bspwn).sig B = B[bspwn.b]!.σ.head :: ρ.sig B :=
+                  : (ρ.push bspwn).sig B = B[bspwn.b]!.r :: ρ.sig B :=
     by simp
 
-  deriving instance DecidableEq for SpawnDeque
+  instance : EmptyCollection SpawnDeque := ⟨⟨[], []⟩⟩
+  deriving instance Repr, DecidableEq, Inhabited for SpawnDeque
+
+  theorem sig_nil {B} : sig B ∅ = [] := rfl
 end SpawnDeque
 
 namespace StackFrame
-  @[simp] abbrev f | mk f _ρ _X _c => f
-  @[simp] abbrev ρ | mk _f ρ _X _c => ρ
-  @[simp] abbrev X | mk _f _ρ X _c => X
-  @[simp] abbrev c | mk _f _ρ _X c => c
---  @[simp] def bsig | mk _f ρ X _c => BlockSig.mk X.length ρ.sig
+  def f | mk f _ρ _X _b => f
+  def ρ | mk _f ρ _X _b => ρ
+  def X | mk _f _ρ X _b => X
+  def b | mk _f _ρ _X b => b
+  
+  @[simp, getters] theorem get_fix {k : StackFrame} : mk k.f k.ρ k.X k.b = k := rfl
+  @[simp, getters] theorem get_1 {k : StackFrame} : k.1 = k.f := rfl
+  @[simp, getters] theorem get_2 {k : StackFrame} : k.2 = k.ρ := rfl
+  @[simp, getters] theorem get_3 {k : StackFrame} : k.3 = k.X := rfl
+  @[simp, getters] theorem get_4 {k : StackFrame} : k.4 = k.b := rfl
+  @[simp, getters] theorem get_f {f ρ X b} : (mk f ρ X b).f = f := rfl
+  @[simp, getters] theorem get_ρ {f ρ X b} : (mk f ρ X b).ρ = ρ := rfl
+  @[simp, getters] theorem get_X {f ρ X b} : (mk f ρ X b).X = X := rfl
+  @[simp, getters] theorem get_b {f ρ X b} : (mk f ρ X b).b = b := rfl
 
-  deriving instance DecidableEq for StackFrame
+  @[simp] def code! (P : Program) (k : StackFrame) : Code :=
+    P[k.f]![k.b]!.code
+
+  @[simp] def spawn (f : FuncIdx) (bspwn : SpawnBlock) : StackFrame :=
+    ⟨f, {}, bspwn.args, bspwn.b⟩
+
+  deriving instance Repr, DecidableEq, Inhabited for StackFrame
 end StackFrame
 
 namespace CallStack
@@ -234,6 +282,9 @@ namespace CallStack
   instance : Inhabited CallStack where
     default := nil
 
+  @[simp] def promsig (P : Program): CallStack -> List Nat
+    | nil => []
+    | K ⬝ k => k.ρ.promsig P[k.f]!.B ++ K.promsig P
   @[simp] def prom : CallStack -> List SpawnBlock
     | nil => []
     | K ⬝ k => k.ρ.prom ++ prom K
@@ -269,6 +320,16 @@ namespace CallStack
   @[simp] theorem append_prom : {K K' : CallStack} -> (K ++ K').prom = K'.prom ++ K.prom
     | K, nil => by simp
     | K, K' ⬝ k => by simp; exact append_prom
+  @[simp] theorem append_promsig (P : Program) : {K K' : CallStack} -> (K ++ K').promsig P = K'.promsig P ++ K.promsig P
+    | K, nil => by simp
+    | K, K' ⬝ k => by simp; exact append_promsig P
+  theorem prom_promsig_nil {P : Program} : {K : CallStack} -> K.prom = [] ↔ K.promsig P = []
+    | nil => by simp
+    | K ⬝ ⟨f, ⟨υ, π⟩, X, b⟩ => by simp; intro πnil; exact prom_promsig_nil
+
+  @[simp] theorem prom_nil : (∅ : CallStack).prom = [] := rfl
+  @[simp] theorem unpr_nil : nil.unpr = [] := rfl
+  @[simp] theorem promsig_nil {P} : nil.promsig P = [] := rfl
 
   theorem allPromoted_iff_nil {K} : allPromoted K <-> K.unpr = [] :=
     by simp
@@ -279,134 +340,201 @@ namespace CallStack
                                       K.allPromoted ∧ K'.allPromoted :=
     by simp
 
-  @[simp] def head : (K : CallStack) -> K ≠ nil -> StackFrame
+  def head : (K : CallStack) -> K ≠ nil -> StackFrame
     | _K ⬝ k, _ => k
-  @[simp] def tail : CallStack -> CallStack
+  def tail : CallStack -> CallStack
     | K ⬝ _k => K
     | nil => nil
 
+  def head? : CallStack -> Option StackFrame
+    | _K ⬝ k => some k
+    | nil => none
+  def head! (K : CallStack) : StackFrame := K.head?.getD default
+
+  @[simp, getters] theorem get_fix : {K : CallStack} -> {nn : K ≠ nil} ->
+                                     K.tail ⬝ (K.head nn) = K
+    | _K ⬝ _k, _ => rfl
+  @[simp, getters] theorem get_head {K k} : (K ⬝ k).head CallStack.noConfusion = k := rfl
+  @[simp, getters] theorem get_head! {K k} : (K ⬝ k).head! = k := rfl
+  @[simp, getters] theorem get_head? {K k} : (K ⬝ k).head? = some k := rfl
+  @[simp, getters] theorem get_tail {K k} : (K ⬝ k).tail = K := rfl
+  @[simp, getters] theorem get_head!_nil : nil.head! = default := rfl
+  @[simp, getters] theorem get_tail_nil : nil.tail = nil := rfl
+
+  theorem head!_eq_head : {K : CallStack} -> (nn : K ≠ nil) -> K.head! = K.head nn
+    | _K ⬝ _k, _nn => rfl
+
   @[simp] def retjoin (P : Program) : CallStack -> Nat
     | nil => default
-    | nil ⬝ ⟨f, _, _, _⟩ => P[f]!.fsig.ret
+    | nil ⬝ k => P[k.f]!.B[k.b]!.r
     | K ⬝ _k => K.retjoin P
 
   @[simp] theorem retjoin_first {P : Program} : {k : StackFrame} -> {K : CallStack} ->
-                                ({k} ++ K).retjoin P = P[k.f]!.fsig.ret
+                                ({k} ++ K).retjoin P = P[k.f]!.B[k.b]!.r
     | _k, .nil => rfl
     | _k, .nil ⬝ _k' => rfl
     | _k, K ⬝ k' ⬝ _k'' => retjoin_first (K := K ⬝ k')
 
-  deriving instance DecidableEq for CallStack
+  deriving instance Repr, DecidableEq for CallStack
+
+  @[simp] def spawn (f : FuncIdx) (bspwn : SpawnBlock) : CallStack :=
+    .nil ⬝ (.spawn f bspwn)
+
+  @[simp] def code! (P : Program) (K : CallStack) : Code :=
+    K.head!.code! P
 end CallStack
 
+namespace Thread
+  -- 51 because priority of (=) is 50
+  notation (name := threadnotation) K:49 " ⋄ " c:51 => Thread.mk K c
+
+  def K | K ⋄ _c => K
+  def c | _K ⋄ c => c
+
+  @[simp, getters] theorem get_fix {T : Thread} : T.K ⋄ T.c = T := rfl
+  @[simp, getters] theorem get_1 {T : Thread} : T.1 = T.K := rfl
+  @[simp, getters] theorem get_2 {T : Thread} : T.2 = T.c := rfl
+  @[simp, getters] theorem get_K {K c} : (K ⋄ c).K = K := rfl
+  @[simp, getters] theorem get_c {K c} : (K ⋄ c).c = c := rfl
+  
+  @[simp] def retjoin (P : Program) : Thread -> Nat
+    | K ⋄ _c => K.retjoin P
+
+  @[simp] def prom (T : Thread) := T.K.prom
+  @[simp] def unpr (T : Thread) := T.K.unpr
+  @[simp] def promsig (P : Program) (T : Thread) := T.K.promsig P
+
+  instance : Inhabited Thread where
+    default := default ⋄ .retn []
+
+  deriving instance Repr, DecidableEq for Thread
+
+  @[simp] def fromStack! (P : Program) (K : CallStack) : Thread :=
+    K ⋄ K.code! P
+
+  @[simp] def spawn! (P : Program) (f : FuncIdx) (bspwn : SpawnBlock) : Thread :=
+    fromStack! P (.spawn f bspwn)
+end Thread
+
 namespace ThreadTree
+  notation (name := notationnode) Rp " ⋏ " Rc => ThreadTree.node Rp Rc
+
   instance : Append ThreadTree where
     append := node
-  instance : Singleton CallStack ThreadTree where
+  instance : Singleton Thread ThreadTree where
     singleton := thread
-  instance : Insert CallStack ThreadTree where
+  instance : Insert Thread ThreadTree where
     insert s p := {s} ++ p
   instance : Inhabited ThreadTree where
     default := thread default
 
   @[simp] def retjoin (P : Program) : ThreadTree -> Nat
-    | thread K => K.retjoin P
-    | node Rp _Rc => Rp.retjoin P
+    | thread T => T.retjoin P
+    | Rp ⋏ _Rc => Rp.retjoin P
 
   @[simp] def prom : ThreadTree -> List SpawnBlock
-    | thread K => K.prom
-    | node Rp _Rc => Rp.prom.tail
+    | thread T => T.prom
+    | Rp ⋏ _Rc => Rp.prom.tail
 
-  @[simp] def split : ThreadTree -> CallStack × List ThreadTree
-    | thread K => ⟨K, []⟩
-    | node Rp Rc => let ⟨K, Rs⟩ := split Rp; ⟨K, Rc :: Rs⟩
+  @[simp] def promsig (P : Program) : ThreadTree -> List Nat
+    | thread T => T.promsig P
+    | Rp ⋏ _Rc => (Rp.promsig P).tail
 
-  @[simp] def merge : CallStack × List ThreadTree -> ThreadTree
-    | ⟨K, []⟩ => thread K
-    | ⟨K, R :: Rs⟩ => node (merge ⟨K, Rs⟩) R
+  @[simp] def split : ThreadTree -> Thread × List ThreadTree
+    | thread T => ⟨T, []⟩
+    | Rp ⋏ Rc => let ⟨K, Rs⟩ := split Rp; ⟨K, Rc :: Rs⟩
 
-  @[simp] theorem split_merge : {KRs : CallStack × List ThreadTree} -> split (merge KRs) = KRs
+  @[simp] def merge : Thread × List ThreadTree -> ThreadTree
+    | ⟨T, []⟩ => thread T
+    | ⟨T, R :: Rs⟩ => merge ⟨T, Rs⟩ ⋏ R
+
+  @[simp] theorem split_merge : {KRs : Thread × List ThreadTree} -> split (merge KRs) = KRs
     | ⟨K, []⟩ => by simp
     | ⟨K, R :: Rs⟩ => by simp[split_merge (KRs := ⟨K, Rs⟩)]
 
   @[simp] theorem merge_split : {R : ThreadTree} -> merge (split R) = R
     | thread K => by simp
-    | node Rp Rc => by simp[merge_split (R := Rp)]
+    | Rp ⋏ Rc => by simp[merge_split (R := Rp)]
 
+  @[simp] def spawn! (P : Program) (f : FuncIdx) (bspwn : SpawnBlock) : ThreadTree :=
+    thread (.spawn! P f bspwn)
 
-  @[simp] def spawn (P : Program) (f : FuncIdx) (args : List Val) : ThreadTree :=
-    thread (.nil ⬝ ⟨f, ∅, args, .codeEntry P f⟩)
-
-  @[simp] def init (P : Program) : ThreadTree :=
+  @[simp] def init! (P : Program) : ThreadTree :=
     let main := 0 -- first function in program is main()
-    spawn P main []
+    let entry := SpawnBlock.mk 0 [] -- entry block with no args (since main takes none)
+    spawn! P main entry
 
-  deriving instance DecidableEq for ThreadTree
+  deriving instance Repr, DecidableEq for ThreadTree
 end ThreadTree
-
 
 inductive Step (P : Program) : (R R' : ThreadTree) -> Type where
   | congr_parent {Rp Rp' Rc} :
     Step P Rp Rp' ->
-    Step P (Rp.node Rc) (Rp'.node Rc)
+    Step P (Rp ⋏ Rc) (Rp' ⋏ Rc)
 
   | congr_child {Rp Rc Rc'} :
     Step P Rc Rc' ->
-    Step P (.node Rp Rc) (.node Rp Rc')
+    Step P (Rp ⋏ Rc) (Rp ⋏ Rc')
   
-  | stmt {f K ρ X e v c} :
+  | stmt {f K ρ X b e v c} :
     X ⊢ₑₓₚᵣ e ⇓ v ->
-    Step P {K ⬝ ⟨f, ρ, X, .code (.stmt e c)⟩}
-            {K ⬝ ⟨f, ρ, X.concat v, .code c⟩}
+    Step P {K ⬝ ⟨f, ρ, X, b⟩ ⋄ .stmt e c}
+           {K ⬝ ⟨f, ρ, X.concat v, b⟩ ⋄ c}
 
-  | goto {f K ρ X bnext} :
-    Step P {K ⬝ ⟨f, ρ, X, .code (.goto bnext)⟩}
-            {K ⬝ ⟨f, ρ, X[bnext.args]!, .codeOf P f bnext⟩}
+  | goto {f K ρ X b bnext} :
+    Step P {K ⬝ ⟨f, ρ, X, b⟩ ⋄ .goto bnext}
+           {K ⬝ ⟨f, ρ, X[bnext.args]!, bnext.b⟩ ⋄ P[f]![bnext.b]!.code}
 
-  | ite_true {f K ρ X cond bthen belse n} :
+  | ite_true {f K ρ X b cond bthen belse n} :
     X ⊢ₐₜₒₘ cond ⇓ n ->
     n ≠ 0 ->
-    Step P {K ⬝ ⟨f, ρ, X, .code (.ite cond bthen belse)⟩}
-            {K ⬝ ⟨f, ρ, X[bthen.args]!, .codeOf P f bthen⟩}
+    Step P {K ⬝ ⟨f, ρ, X, b⟩ ⋄ .ite cond bthen belse}
+           {K ⬝ ⟨f, ρ, X[bthen.args]!, bthen.b⟩ ⋄ P[f]![bthen.b]!.code}
 
-  | ite_false {f K ρ X cond bthen belse} :
+  | ite_false {f K ρ X b cond bthen belse} :
     X ⊢ₐₜₒₘ cond ⇓ 0 ->
-    Step P {K ⬝ ⟨f, ρ, X, .code (.ite cond bthen belse)⟩}
-            {K ⬝ ⟨f, ρ, X[belse.args]!, .codeOf P f belse⟩}
+    Step P {K ⬝ ⟨f, ρ, X, b⟩ ⋄ .ite cond bthen belse}
+           {K ⬝ ⟨f, ρ, X[belse.args]!, belse.b⟩ ⋄ P[f]![belse.b]!.code}
 
-  | call {f g K ρ X x bret} :
-    Step P {K ⬝ ⟨f, ρ, X, .code (.call g x bret)⟩}
-            {K ⬝ ⟨f, ρ, X, .cont bret⟩ ⬝ ⟨g, {}, X[x]!, .codeEntry P g⟩}
+  | call {f g K ρ b X x bret} :
+    Step P {K ⬝ ⟨f, ρ, X, b⟩ ⋄ .call g x bret}
+           {K ⬝ ⟨f, ρ, X[bret.args]!, bret.b⟩ ⬝ ⟨g, {}, X[x]!, 0⟩ ⋄ P[g]!.entry}
 
-  | retn {f g K ρ X Y y bret} :
-    Step P {K ⬝ ⟨f, ρ, X, .cont bret⟩ ⬝ ⟨g, {}, Y, .code (.retn y)⟩}
-            {K ⬝ ⟨f, ρ, X[bret.args]! ++ Y[y]!, .codeOf P f bret⟩}
+  | retn {f g K ρ X Y y b bret} :
+    Step P {K ⬝ ⟨f, ρ, X, bret⟩ ⬝ ⟨g, {}, Y, b⟩ ⋄ .retn y}
+           {K ⬝ ⟨f, ρ, X ++ Y[y]!, bret⟩ ⋄ P[f]![bret]!.code}
 
-  | spork {f K ρ X n bbody bspwn} :
-    Step P {K ⬝ ⟨f, ρ, X, .code (.spork n bbody bspwn)⟩}
-            {K ⬝ ⟨f, ρ.push ⟨bspwn.b, X[bspwn.args]!⟩,
-                  X[bbody.args]!, .codeOf P f bbody⟩}
+  | spork {f K ρ X b bbody bspwn} :
+    Step P {K ⬝ ⟨f, ρ, X, b⟩ ⋄ .spork bbody bspwn}
+           {K ⬝ ⟨f, ρ.push ⟨bspwn.b, X[bspwn.args]!⟩,
+                 X[bbody.args]!, bbody.b⟩ ⋄ P[f]![bbody.b]!.code}
 
-  | promote {f unpr bspwn prom X K c K'} :
+  | promote {f unpr bspwn prom X K b K' C} :
     K.unpr = [] ->
     K'.prom = [] ->
-    Step P {K ⬝ ⟨f, ⟨bspwn :: unpr, prom⟩, X, c⟩ ++ K'}
-            {K ⬝ ⟨f, ⟨unpr, bspwn :: prom⟩, X, c⟩ ++ K',
-             {⟨f, {}, bspwn.args, .codeOfBlockIdx P f bspwn.b⟩}}
+    Step P {(K ⬝ ⟨f, ⟨bspwn :: unpr, prom⟩, X, b⟩ ++ K') ⋄ C}
+           {(K ⬝ ⟨f, ⟨unpr, bspwn :: prom⟩, X, b⟩ ++ K') ⋄ C,
+            {⟨f, {}, bspwn.args, bspwn.b⟩} ⋄ P[f]![bspwn.b]!.code}
 
-  | spoin_unpr {f K ρ sc X bunpr bprom} :
-    Step P {K ⬝ ⟨f, ρ.push sc, X, .code (.spoin bunpr bprom)⟩}
-            {K ⬝ ⟨f, ρ, X[bunpr.args]!, .codeOf P f bunpr⟩}
+  | spoin_unpr {f K ρ bspwn X b bunpr bprom} :
+    Step P {K ⬝ ⟨f, ρ.push bspwn, X, b⟩ ⋄ .spoin bunpr bprom}
+           {K ⬝ ⟨f, ρ, X[bunpr.args]!, bunpr.b⟩ ⋄ P[f]![bunpr.b]!.code}
 
-  | spoin_prom {f K π X bunpr bprom bspwn} :
+  | spoin_prom {f g K ρ X b b' bunpr bprom Y y} {bspwn : SpawnBlock} :
     K.unpr = [] ->
-    Step P {K ⬝ ⟨f, ⟨[], bspwn :: π⟩, X, .code (.spoin bunpr bprom)⟩}
-           {K ⬝ ⟨f, ⟨[], π⟩, X[bprom.args]!, .codeOf P f bprom⟩}
+    Step P {(K ⬝ ⟨f, ⟨[], bspwn :: ρ⟩, X, b⟩ ⋄ .spoin bunpr bprom),
+             {⟨g, {}, Y, b'⟩} ⋄ .retn y}
+           {K ⬝ ⟨f, ⟨[], ρ⟩, X[bprom.args]! ++ Y[y]!, bprom.b⟩ ⋄ P[f]![bprom.b]!.code}
 
-  | sync {f K ρ X Y y bsync} :
-      Step P {K ⬝ ⟨f, ρ, X, .code (.join bsync)⟩,
-              {⟨f, {}, Y, .code (.exit y)⟩}}
-             {K ⬝ ⟨f, ρ, X ++ Y[y]!, .codeOf P f bsync⟩}
+  -- | spoin_prom {f K π X bunpr bprom bspwn} :
+  --   K.unpr = [] ->
+  --   Step P {K ⬝ ⟨f, ⟨[], bspwn :: π⟩, X, .code (.spoin bunpr bprom)⟩}
+  --          {K ⬝ ⟨f, ⟨[], π⟩, X[bprom.args]!, .codeOf P f bprom⟩}
+
+  -- | sync {f K ρ X Y y bsync} :
+  --     Step P {K ⬝ ⟨f, ρ, X, .code (.join bsync)⟩,
+  --             {⟨f, {}, Y, .code (.exit y)⟩}}
+  --            {K ⬝ ⟨f, ρ, X ++ Y[y]!, .codeOf P f bsync⟩}
 
   -- | spoin_prom {f K ρ X bunpr bprom Y y} {bspwn : SpawnBlock} :
   --   K.unpr = [] ->
@@ -472,12 +600,12 @@ namespace Steps
   --   Step P (.node Rp Rc) (.node Rp Rc')
 
   def congr_parent {P} {Rp Rp' Rc : ThreadTree} :
-                   P ⊢ Rp ↦* Rp' -> P ⊢ (Rp.node Rc) ↦* (Rp'.node Rc)
+                   P ⊢ Rp ↦* Rp' -> P ⊢ (Rp ⋏ Rc) ↦* (Rp' ⋏ Rc)
     | .nil => .nil
     | .cons ss s => .cons ss.congr_parent s.congr_parent
 
   def congr_child {P} {Rp Rc Rc' : ThreadTree} :
-                  P ⊢ Rc ↦* Rc' -> P ⊢ (Rp.node Rc) ↦* (Rp.node Rc')
+                  P ⊢ Rc ↦* Rc' -> P ⊢ (Rp ⋏ Rc) ↦* (Rp ⋏ Rc')
     | .nil => .nil
     | .cons ss s => .cons ss.congr_child s.congr_child
 

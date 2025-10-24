@@ -2,6 +2,28 @@ import SporkProofs.Syntax
 import SporkProofs.IVec
 import SporkProofs.HeadIs
 
+-- class WFClause (T : Type) where
+--   A : Type
+--   wf : A -> T -> Prop
+--   isWF {a t} : Decidable (wf a t)
+
+-- instance {T : Type} [WFClause T] {a : WFClause.A T} {t : T} : Decidable (WFClause.WF a t) :=
+--   WFClause.isWF
+
+-- declare_syntax_cat antecedents
+-- declare_syntax_cat succedent
+-- syntax (term:arg)? : antecedents
+-- syntax term:arg "; " antecedents : antecedents
+-- syntax "parse_antecedents " antecedents : term
+-- syntax term " WF" : succedent
+-- syntax (name := WFsyntax) antecedents " ⊢ " succedent : term
+
+-- macro_rules
+--   | `(parse_antecedents ) => `(())
+--   | `(parse_antecedents $t:term) => `($t)
+--   | `(parse_antecedents $t:term; $rest:antecedents) => `(($t, parse_antecedents $rest))
+--   | `($xs:antecedents ⊢ $t:term WF) => `(WFClause.WF (parse_antecedents $xs) ($t))
+
 namespace Var
   inductive WF (Γ : Scope) (v : Var) : Prop where
     | mk : v.idx < Γ -> v.WF Γ
@@ -14,10 +36,15 @@ namespace Var
     instance {Γ : Scope} {v : Var} : Decidable (Γ ⊢ v WF-var) :=
       decidable_of_iff (v.idx < Γ) ⟨(⟨·⟩), (·.1)⟩
 
-    theorem weakening {Γ Γ'} {v : Var} (wf : Γ ⊢ v WF-var) : (Γ + Γ') ⊢ v WF-var :=
+    theorem weaken {Γ Γ'} {v : Var} (wf : Γ ⊢ v WF-var) : (Γ + Γ') ⊢ v WF-var :=
       .mk (Nat.lt_add_right Γ' wf.idx)
   end WF
 end Var
+
+namespace IVec
+  theorem weaken {Γ Γ'} {xs : List Var} {xswf : IVec (Γ ⊢ · WF-var) xs} : IVec ((Γ + Γ') ⊢ · WF-var) xs :=
+    xswf.map (λ _v vwf => vwf.weaken)
+end IVec
 
 namespace Atom
   inductive WF (Γ : Scope) : Atom -> Prop where
@@ -34,9 +61,9 @@ namespace Atom
     theorem vwf {Γ : Scope} {v : Var} : Γ ⊢ (Atom.var v) WF-atom -> Γ ⊢ v WF-var
       | .var wf => wf
 
-    theorem weakening {Γ Γ'} {a : Atom} : Γ ⊢ a WF-atom -> (Γ + Γ') ⊢ a WF-atom
+    theorem weaken {Γ Γ'} {a : Atom} : Γ ⊢ a WF-atom -> (Γ + Γ') ⊢ a WF-atom
       | .val => .val
-      | .var wf => .var wf.weakening
+      | .var wf => .var wf.weaken
   end WF
 end Atom
 
@@ -57,10 +84,10 @@ namespace Expr
       | .bop _o a b => decidable_of_iff (Γ ⊢ a WF-atom ∧ Γ ⊢ b WF-atom)
           ⟨And.elim bop, λ (bop a b) => ⟨a, b⟩⟩
 
-    theorem weakening {Γ Γ'} {e : Expr} : Γ ⊢ e WF-expr -> (Γ + Γ') ⊢ e WF-expr
-      | .nop a => .nop a.weakening
-      | .uop a => .uop a.weakening
-      | .bop a b => .bop a.weakening b.weakening
+    theorem weaken {Γ Γ'} {e : Expr} : Γ ⊢ e WF-expr -> (Γ + Γ') ⊢ e WF-expr
+      | .nop a => .nop a.weaken
+      | .uop a => .uop a.weaken
+      | .bop a b => .bop a.weaken b.weaken
   end WF
 end Expr
 
@@ -77,10 +104,10 @@ namespace Cont
          (_ : IVec (bsig.Γ ⊢ · WF-var) b.args)
 
   namespace WFRets
-    notation (name := notationwf) B:arg " ; " bsig:arg " ⊢ " b:arg " ( " rets " )" " WF-cont" => WFRets B bsig rets b
+    notation (name := notationwf) B:arg "; " bsig:arg " ⊢ " b:arg " ( " rets " )" " WF-cont" => WFRets B bsig rets b
   end WFRets
   namespace WF
-    notation (name := notationwf) B:arg " ; " bsig:arg " ⊢ " b:arg " WF-cont" => WF B bsig b
+    notation (name := notationwf) B:arg "; " bsig:arg " ⊢ " b:arg " WF-cont" => WF B bsig b
   end WF
 
   namespace WFRets
@@ -104,17 +131,34 @@ namespace Cont
                 b.b < B.length := wf.1
     theorem bsig {B bsig rets b} (wf : B; bsig ⊢ b(rets) WF-cont) :
                  B[b.b]'wf.blt = ⟨b.args.length + rets, bsig.r, bsig.σ⟩ := wf.2
+    theorem bsig! {B bsig rets b} (wf : B; bsig ⊢ b(rets) WF-cont) :
+                  B[b.b]! = ⟨b.args.length + rets, bsig.r, bsig.σ⟩ :=
+      getElem!_pos B b.b wf.blt ▸ wf.bsig
     theorem args {B bsig rets b} (wf : B; bsig ⊢ b(rets) WF-cont) :
                  IVec (bsig.Γ ⊢ · WF-var) b.args := wf.3
 
-    theorem weakening_B
+    theorem weaken_B
             {B B' bsig ret b} :
             B; bsig ⊢ b(ret) WF-cont ->
             (B ++ B'); bsig ⊢ b(ret) WF-cont
       | mk blt bsigb args =>
         mk (List.length_append ▸ Nat.lt_add_right B'.length blt)
-           (List.getElem_append_left' blt B' ▸ bsigb)
+           (-- getElem!_pos (B ++ B') b.b
+            --  (by rw[← Nat.add_zero b.b]
+            --      let x := Nat.add_le_add blt (Nat.zero_le B'.length)
+            --      simp at x
+            --      rw[List.length_append]
+            --      exact x) ▸
+            List.getElem_append_left' blt B' ▸
+            getElem!_pos B b.b blt ▸
+            bsigb)
            args
+    theorem weaken_Γ
+            {B Γ bsig ret b} :
+            B; bsig ⊢ b(ret) WF-cont ->
+            B; (bsig.binds Γ) ⊢ b(ret) WF-cont
+      | mk blt bsigb args =>
+        mk blt bsigb args.weaken
   end WFRets
 
   namespace WF
@@ -132,14 +176,43 @@ namespace Cont
                 b.b < B.length := wf.1
     theorem bsig {B bsig b} (wf : B; bsig ⊢ b WF-cont) :
                  B[b.b]'wf.blt = ⟨b.args.length, bsig.r, bsig.σ⟩ := wf.2
+    theorem bsig! {B bsig b} (wf : B; bsig ⊢ b WF-cont) :
+                  B[b.b]! = ⟨b.args.length, bsig.r, bsig.σ⟩ :=
+      getElem!_pos B b.b wf.blt ▸ wf.bsig
     theorem args {B bsig b} (wf : B; bsig ⊢ b WF-cont) :
                  IVec (bsig.Γ ⊢ · WF-var) b.args := wf.3
 
-    theorem weakening_B
+    theorem weaken_B
             {B B' bsig b}
             (wf : B; bsig ⊢ b WF-cont) :
             (B ++ B'); bsig ⊢ b WF-cont :=
-      wf.cast0.weakening_B.cast0
+      wf.cast0.weaken_B.cast0
+
+    theorem weaken_Γ
+            {B Γ bsig b}
+            (wf : B; bsig ⊢ b WF-cont) :
+            B; (bsig.binds Γ) ⊢ b WF-cont :=
+      wf.cast0.weaken_Γ.cast0
+
+
+    -- theorem spawn {P f bspwn} (flt : f < P.size) (blt : bspwn < P[f].B.length) : P[f].B; P[f].B[bspwn] ⊢ (.spawn P f bspwn) WF-cont :=
+    --   let rec argswf' : (Γ : Scope) -> (n : Nat) ->
+    --                     IVec ((Γ + n) ⊢ · WF-var) ((List.range' n Γ).map Var.mk)
+    --     | 0, n => .nil
+    --     | Γ + 1, n => .cons ⟨by simp⟩ (Nat.add_assoc Γ 1 n ▸
+    --                                    Nat.add_comm 1 n ▸
+    --                                    argswf' Γ (n + 1))
+    --   let argswf (Γ : Scope) : IVec (Γ ⊢ · WF-var) ((List.range Γ).map Var.mk) :=
+    --     List.range_eq_range' ▸ argswf' Γ 0
+    --   let geeq : P[f]!.B[bspwn]! = P[f].B[bspwn] :=
+    --     getElem!_pos P[f].B bspwn blt ▸ getElem!_pos P f flt ▸ rfl
+    --   ⟨blt,
+    --    by simp only [Cont.b, Cont.args]
+    --       show BlockSig.mk P[f].B[bspwn].Γ P[f].B[bspwn].r P[f].B[bspwn].σ =
+    --            BlockSig.mk ((List.range P[f]!.B[bspwn]!.Γ).map Var.mk).length P[f].B[bspwn].r P[f].B[bspwn].σ
+    --       simp only [BlockSig.mk.injEq, and_self, and_true,
+    --                  List.length_map, List.length_range, geeq],
+    --    geeq ▸ argswf P[f]!.B[bspwn]!.Γ⟩
   end WF
 
   theorem WFRets0_iff_WF {B : BlockSigs} {bsig : BlockSig} {b : Cont} :
@@ -150,7 +223,7 @@ end Cont
 namespace Code
   --notation e:arg " ;; " c => stmt e c
 
-  inductive WF (P: Program) (B: BlockSigs) : BlockSig -> Code -> Prop where
+  inductive WF (P: List FuncSig) (B: BlockSigs) : BlockSig -> Code -> Prop where
     | stmt
         {bsig : BlockSig}
         {e : Expr}
@@ -180,10 +253,10 @@ namespace Code
         {f : FuncIdx}
         {args : List Var}
         {bret : Cont} :
-        (_ : f < P.size) ->
-        P[f].fsig.arity = args.length ->
+        (_ : f < P.length) ->
+        P[f].arity = args.length ->
         IVec (bsig.Γ ⊢ · WF-var) args ->
-        B; bsig ⊢ bret(P[f].fsig.ret) WF-cont ->
+        B; bsig ⊢ bret(P[f].ret) WF-cont ->
         (call f args bret).WF P B bsig
         
     | retn
@@ -227,7 +300,7 @@ namespace Code
 
   namespace WF
     
-    notation (name := notationwf) P:arg " ; " B:arg " ; " bsig:arg " ⊢ " c:arg " WF-code" => WF P B bsig c
+    notation (name := notationwf) P:arg "; " B:arg "; " bsig:arg " ⊢ " c:arg " WF-code" => WF P B bsig c
 
     instance instDecidable {P B bsig} : (c : Code) ->
                            Decidable (P; B; bsig ⊢ c WF-code)
@@ -245,10 +318,10 @@ namespace Code
                             B; bsig ⊢ belse WF-cont)
             ⟨λ ⟨a, b, c⟩ => ite a b c, λ | ite a b c => ⟨a, b, c⟩⟩
       | .call f args bret =>
-          decidable_of_iff (∃ _ : f < P.size,
-                            P[f].fsig.arity = args.length ∧
+          decidable_of_iff (∃ _ : f < P.length,
+                            P[f].arity = args.length ∧
                             IVec (bsig.Γ ⊢ · WF-var) args ∧
-                            B; bsig ⊢ bret(P[f].fsig.ret) WF-cont)
+                            B; bsig ⊢ bret(P[f].ret) WF-cont)
             ⟨λ ⟨a, b, c, d⟩ => call a b c d,
              λ | call a b c d => ⟨a, b, c, d⟩⟩
       | .retn args =>
@@ -300,11 +373,11 @@ namespace Code
 
     theorem call_flt {P B bsig f args bret} :
                      P; B; bsig ⊢ (.call f args bret) WF-code ->
-                     f < P.size
+                     f < P.length
       | call flt _ _ _ => flt
     theorem call_arity {P B bsig f args bret} :
                        (wf : P; B; bsig ⊢ (.call f args bret) WF-code) ->
-                       (P[f]'wf.call_flt).fsig.arity = args.length
+                       (P[f]'wf.call_flt).arity = args.length
       | call _ aritywf _ _ => aritywf
     theorem call_args {P B bsig f args bret} :
                       P; B; bsig ⊢ (.call f args bret) WF-code ->
@@ -312,7 +385,7 @@ namespace Code
       | call _ _ argswf _ => argswf
     theorem call_bret {P B bsig f args bret} :
                       (wf : P; B; bsig ⊢ (.call f args bret) WF-code) ->
-                      B; bsig ⊢ bret((P[f]'wf.call_flt).fsig.ret) WF-cont
+                      B; bsig ⊢ bret((P[f]'wf.call_flt).ret) WF-cont
       | call _ _ _ bretwf => bretwf
 
     theorem retn_length {P B bsig args} :
@@ -351,32 +424,55 @@ namespace Code
                         B; bsig.spoin ⊢ bprom(bsig.σ.head wf.spoin_oblg) WF-cont
       | spoin _ _ bpromwf => bpromwf
 
-    theorem weakening_B
+    theorem weaken_B
             {P B B' bsig c} :
             P; B; bsig ⊢ c WF-code ->
             P; (B ++ B'); bsig ⊢ c WF-code
       | stmt ewf cwf =>
-        stmt ewf cwf.weakening_B
+        stmt ewf cwf.weaken_B
       | goto bnextwf =>
-        goto bnextwf.weakening_B
+        goto bnextwf.weaken_B
       | ite ewf bthenwf belsewf =>
-        ite ewf bthenwf.weakening_B belsewf.weakening_B
+        ite ewf bthenwf.weaken_B belsewf.weaken_B
       | call flt aritywf argswf bretwf =>
-        call flt aritywf argswf bretwf.weakening_B
+        call flt aritywf argswf bretwf.weaken_B
       | retn r σ argswf =>
         retn r σ argswf
       | spork (bspwn := bspwn) bbodywf bspwnwf =>
         let h := List.getElem?_append_left bspwnwf.blt (l₂ := B')
-        let spwn := bspwnwf.weakening_B
-        let body := bbodywf.weakening_B
+        let spwn := bspwnwf.weaken_B
+        let body := bbodywf.weaken_B
         spork (by simp; rw[h]; simp at body; exact body)
               (by simp; rw[h]; simp at spwn; exact spwn)
       | spoin snwf bunprwf bpromwf =>
-        spoin snwf bunprwf.weakening_B bpromwf.weakening_B
+        spoin snwf bunprwf.weaken_B bpromwf.weaken_B
       -- | join oblg bsyncwf =>
-      --   join oblg bsyncwf.weakening_B
+      --   join oblg bsyncwf.weaken_B
       -- | exit oblg argswf =>
       --   exit oblg argswf
+
+    theorem weaken_Γ
+            {P B Γ bsig c} :
+            P; B; bsig ⊢ c WF-code ->
+            P; B; (bsig.binds Γ) ⊢ c WF-code
+      | stmt ewf cwf =>
+        stmt ewf.weaken (by simp[BlockSig.bind, BlockSig.binds]
+                            rw[  Nat.add_assoc bsig.Γ Γ 1,
+                                 Nat.add_comm Γ 1,
+                               ← Nat.add_assoc bsig.Γ 1 Γ]
+                            exact cwf.weaken_Γ)
+      | goto bnextwf =>
+        goto bnextwf.weaken_Γ
+      | ite ewf bthenwf belsewf =>
+        ite ewf.weaken bthenwf.weaken_Γ belsewf.weaken_Γ
+      | call flt aritywf argswf bretwf =>
+        call flt aritywf argswf.weaken bretwf.weaken_Γ
+      | retn r σ argswf =>
+        retn r σ argswf.weaken
+      | spork (bspwn := bspwn) bbodywf bspwnwf =>
+        spork bbodywf.weaken_Γ bspwnwf.weaken_Γ
+      | spoin snwf bunprwf bpromwf =>
+        spoin snwf bunprwf.weaken_Γ bpromwf.weaken_Γ
 
     theorem merge_wf {P B bsig} :
             {e : List Expr} -> {c : Code} ->
@@ -389,7 +485,7 @@ namespace Code
           (merge_wf (bsig := bsig.bind) (e := es)
             (λ i => let ewf' := ewf ⟨i.1 + 1, by simp⟩
                     by simp[← Nat.add_assoc bsig.1 1 i.1] at ewf'
-                       simp
+                       simp[BlockSig.bind]
                        rw[Nat.add_assoc, Nat.add_comm 1 i.1]
                        exact ewf')
             (match bsig with
@@ -409,7 +505,7 @@ namespace Code
         apply And.intro
         · exact (λ | ⟨0, l⟩ => cwf.stmt_expr
                    | ⟨i + 1, l⟩ =>
-                     by simpa[Nat.add_assoc, Nat.add_comm 1 i]
+                     by simpa[BlockSig.bind, Nat.add_assoc, Nat.add_comm 1 i]
                         using p.1 ⟨i, by simpa using l⟩)
         · (match h : bsig with
              | .mk Γ r σ =>
@@ -423,7 +519,7 @@ namespace Block
     | mk (c : b.code.WF P B b.bsig)
 
   namespace WF
-    notation (name := notationwf) P:arg " ; " B:arg " ⊢ " b:arg " WF-block" => WF P B b
+    notation (name := notationwf) P:arg "; " B:arg " ⊢ " b:arg " WF-block" => WF P B b
 
     instance (P B) : {b : Block} -> Decidable (P; B ⊢ b WF-block)
       | .mk bsig code =>
@@ -434,19 +530,19 @@ namespace Block
                  P; B; b.bsig ⊢ b.code WF-code
       | .mk c => c
 
-    theorem weakening_B {P B B' b} : P; B ⊢ b WF-block ->
+    theorem weaken_B {P B B' b} : P; B ⊢ b WF-block ->
                         P; (B ++ B') ⊢ b WF-block
-      | mk cwf => mk cwf.weakening_B
+      | mk cwf => mk cwf.weaken_B
   end WF
 end Block
 
 namespace Blocks
-  inductive WF (P : Program) (bs: List Block) (bsig: BlockSig) : Prop where
+  inductive WF (P : List FuncSig) (bs: List Block) (bsig: BlockSig) : Prop where
     | mk (blocks : IVec (P; (bs.map (·.bsig)) ⊢ · WF-block) bs)
          (head : HeadIs bs (·.bsig) bsig)
 
   namespace WF
-    notation (name := notationwf) P:arg " ; " bsig:arg " ⊢ " bs:arg " WF-blocks" => WF P bs bsig
+    notation (name := notationwf) P:arg "; " bsig:arg " ⊢ " bs:arg " WF-blocks" => WF P bs bsig
 
     instance wf {P bs bsig}: Decidable (P; bsig ⊢ bs WF-blocks) :=
       decidable_of_iff (IVec (P; (bs.map (·.bsig)) ⊢ · WF-block) bs ∧
@@ -465,7 +561,7 @@ namespace Blocks
             P; bsig ⊢ (bs ++ bs') WF-blocks
       | .mk blocks head, bs'wf =>
         .mk (IVec.append (blocks.map
-              (λ b bwf => by simpa using bwf.weakening_B)) bs'wf)
+              (λ b bwf => by simpa using bwf.weaken_B)) bs'wf)
             ⟨by rw[List.head?_eq_some_head,
                    List.head_append_left head.nonnil,
                    ← head.head?eq,
@@ -477,7 +573,7 @@ namespace Func
   -- inductive WF (P : Program) (f : Func) : Prop where
   --   | mk (blocks : IVec (·.WF P (f.blocks.map (·.bsig))) f.blocks)
   --        (head : HeadIs f.blocks (·.bsig) ⟨f.fsig.arity, .retn f.fsig.ret⟩)
-  abbrev WF (P: Program) (f: Func): Prop :=
+  abbrev WF (P: List FuncSig) (f: Func): Prop :=
     P; ⟨f.fsig.arity, f.fsig.ret, []⟩ ⊢ f.blocks WF-blocks
 
   namespace WF
@@ -499,26 +595,33 @@ namespace Func
             IVec (P; ((bs ++ bs').map (·.bsig)) ⊢ · WF-block) bs' ->
             P ⊢ (.mk fsig (bs ++ bs')) WF-func :=
       Blocks.WF.add_blocks
+
+    theorem get {P f} (fwf : P ⊢ f WF-func) (j : Fin f.size) :
+                P; (f.blocks.map (·.bsig)) ⊢ f[j] WF-block :=
+      fwf.blocks⁅j⁆
   end WF
 end Func
 
 namespace Program
   inductive WF (P : Program): Prop where
-    | mk (funcs : IVec (P ⊢ · WF-func) P.funs)
+    | mk (funcs : IVec (P.fsigs ⊢ · WF-func) P.funs)
          (main: HeadIs P.funs (·.fsig) ⟨0, 1⟩)
 
   namespace WF
     notation (name := notationwf) P:arg " WF-program" => WF P
     
     instance {P : Program}: Decidable (P WF-program) :=
-      decidable_of_iff (IVec (P ⊢ · WF-func) P.funs ∧
+      decidable_of_iff (IVec (P.fsigs ⊢ · WF-func) P.funs ∧
                         HeadIs P.funs (·.fsig) ⟨0, 1⟩)
           ⟨λ ⟨a, b⟩ => mk a b, λ | mk a b => ⟨a, b⟩⟩
 
-    theorem funcs {P} : P WF-program -> IVec (P ⊢ · WF-func) P.funs
+    theorem funcs {P} : P WF-program -> IVec (P.fsigs ⊢ · WF-func) P.funs
       | .mk funcs _main => funcs
     theorem main {P} : P WF-program -> HeadIs P.funs (·.fsig) ⟨0, 1⟩
       | mk _funcs main => main
+
+    theorem get {P} (Pwf : P WF-program) (j : Fin P.size) : P.fsigs ⊢ P[j] WF-func :=
+      Pwf.funcs.get j
   end WF
 end Program
 

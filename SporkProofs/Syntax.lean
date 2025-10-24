@@ -1,3 +1,5 @@
+import SporkProofs.SimpSet
+
 abbrev Val := Int
 
 abbrev Scope := Nat
@@ -175,29 +177,32 @@ namespace Oblg
 end Oblg
 -/
 
+--run_cmd mk_simp_attr `simp_name
+
 namespace BlockSig
-  @[simp] abbrev Γ | mk Γ _r _σ => Γ
-  @[simp] abbrev r | mk _Γ r _σ => r
-  @[simp] abbrev σ | mk _Γ _r σ => σ
-  @[simp] abbrev bind | mk Γ r σ => mk Γ.succ r σ
-  -- @[simp] abbrev retn | mk Γ _σ, n => mk Γ (Oblg.retn n)
-  -- @[simp] abbrev exit | mk Γ _σ, n => mk Γ (Oblg.exit n)
-  -- @[simp] abbrev spoin | mk Γ σ, n => mk Γ (σ.spoin n)
-  -- @[simp] abbrev join | mk Γ σ, n => mk Γ (σ.join n)
-  -- @[simp] abbrev head | mk _Γ σ => σ.head
-  -- @[simp] abbrev tail | mk Γ σ => mk Γ σ.tail
-  @[simp] abbrev binds | mk Γ r σ, Γ' => mk (Γ + Γ') r σ
---  @[simp] abbrev join
+  def Γ | mk Γ _r _σ => Γ
+  def r | mk _Γ r _σ => r
+  def σ | mk _Γ _r σ => σ
+  def bind | mk Γ r σ => mk Γ.succ r σ
+  def binds | mk Γ r σ, Γ' => mk (Γ + Γ') r σ
+  def spork | mk Γ r σ, s => mk Γ r (s :: σ)
+  def spoin | mk Γ r σ => mk Γ r σ.tail
+  def spwn | mk Γ _r _σ, n => mk Γ n []
 
-  @[simp] abbrev spork | mk Γ r σ, s => mk Γ r (s :: σ)
-  @[simp] abbrev spoin | mk Γ r σ => mk Γ r σ.tail
-  @[simp] abbrev spwn | mk Γ _r _σ, n => mk Γ n []
-  -- @[simp] abbrev spoin_unpr | mk Γ r σ => mk Γ r σ.tail
-  -- @[simp] abbrev spoin_prom : (bsig : BlockSig) -> bsig.σ ≠ [] -> BlockSig
-  --   | mk Γ r (s :: σ),
+  @[simp, getters] theorem get_fix {b} : mk b.Γ b.r b.σ = b := rfl
+  @[simp, getters] theorem get_1 {b : BlockSig} : b.1 = b.Γ := rfl
+  @[simp, getters] theorem get_2 {b : BlockSig} : b.2 = b.r := rfl
+  @[simp, getters] theorem get_3 {b : BlockSig} : b.3 = b.σ := rfl
+  @[simp, getters] theorem get_Γ {Γ r σ} : (mk Γ r σ).Γ = Γ := rfl
+  @[simp, getters] theorem get_r {Γ r σ} : (mk Γ r σ).r = r := rfl
+  @[simp, getters] theorem get_σ {Γ r σ} : (mk Γ r σ).σ = σ := rfl
+  @[simp, getters] theorem get_bind {Γ r σ} : (mk Γ r σ).bind = mk Γ.succ r σ := rfl
+  @[simp, getters] theorem get_binds {Γ r σ Γ'} : (mk Γ r σ).binds Γ' = mk (Γ + Γ') r σ := rfl
+  @[simp, getters] theorem get_spork {Γ r σ s} : (mk Γ r σ).spork s = mk Γ r (s :: σ) := rfl
+  @[simp, getters] theorem get_spoin {Γ r σ} : (mk Γ r σ).spoin = mk Γ r σ.tail := rfl
+  @[simp, getters] theorem get_spwn {Γ r σ n} : (mk Γ r σ).spwn n = mk Γ n [] := rfl
 
-  deriving instance DecidableEq for BlockSig
-  -- instance : Inhabited BlockSig := ⟨0, .exit 1⟩
+  deriving instance Repr, DecidableEq for BlockSig
   instance : Inhabited BlockSig := ⟨0, 1, []⟩
 
   -- @[simp] def add (a b : BlockSig) :=
@@ -217,18 +222,28 @@ namespace BlockSig
 end BlockSig
 
 namespace FuncSig
-  @[simp] abbrev arity | mk a _r => a
-  @[simp] abbrev ret | mk _a r => r
+  def arity | mk a _r => a
+  def ret | mk _a r => r
+  
+  @[simp, getters] theorem get_fix {f : FuncSig} : mk f.arity f.ret = f := rfl
+  @[simp, getters] theorem get_1 {f : FuncSig} : f.1 = f.arity := rfl
+  @[simp, getters] theorem get_2 {f : FuncSig} : f.2 = f.ret := rfl
+  @[simp, getters] theorem get_arity {a r} : (mk a r).arity = a := rfl
+  @[simp, getters] theorem get_ret {a r} : (mk a r).ret = r := rfl
 
-  deriving instance DecidableEq, Inhabited for FuncSig
+  deriving instance Repr, DecidableEq, Inhabited for FuncSig
 end FuncSig
 
 namespace Var
-  @[simp] abbrev idx | mk v => v
+  def idx | mk v => v
+  def inc (v : Var) (n : Nat) := mk (v.idx + n)
 
-  @[simp] abbrev inc | mk v, n => mk (v + n)
+  @[simp, getters] theorem get_fix {v : Var} : mk v.idx = v := rfl
+  @[simp, getters] theorem get_1 {v : Var} : v.1 = v.idx := rfl
+  @[simp, getters] theorem get_idx {i} : (mk i).idx = i := rfl
+  @[simp, getters] theorem get_inc {i n} : (mk i).inc n = mk (i + n) := rfl
 
-  deriving instance DecidableEq for Var
+  deriving instance Repr, DecidableEq for Var
 
   instance {n} : OfNat Var n where
     ofNat := Var.mk n
@@ -239,30 +254,36 @@ namespace Var
 end Var
 
 namespace Atom
-  deriving instance DecidableEq for Atom
+  deriving instance Repr, DecidableEq for Atom
 end Atom
 
 namespace Uop
-  deriving instance DecidableEq for Uop
+  deriving instance Repr, DecidableEq for Uop
 end Uop
 
 namespace Bop
-  deriving instance DecidableEq for Bop
+  deriving instance Repr, DecidableEq for Bop
 end Bop
 
 namespace Expr
-  deriving instance DecidableEq for Expr
+  deriving instance Repr, DecidableEq for Expr
 end Expr
 
 namespace Cont
-  deriving instance DecidableEq for Cont
+  deriving instance Repr, DecidableEq for Cont
 
-  @[simp] abbrev b | mk b _args => b
-  @[simp] abbrev args | mk _b args => args
+  def b | mk b _args => b
+  def args | mk _b args => args
+
+  @[simp, getters] theorem get_fix {c : Cont} : mk c.b c.args = c := rfl
+  @[simp, getters] theorem get_1 {c : Cont} : c.1 = c.b := rfl
+  @[simp, getters] theorem get_2 {c : Cont} : c.2 = c.args := rfl
+  @[simp, getters] theorem get_b {b args} : (mk b args).b = b := rfl
+  @[simp, getters] theorem get_args {b args} : (mk b args).args = args := rfl
 end Cont
 
 namespace Code
-  deriving instance DecidableEq for Code
+  deriving instance Repr, DecidableEq for Code
 
   @[simp] def split : Code -> List Expr × (c : Code) ×' (∀ e, ∀ c', c ≠ .stmt e c')
     | stmt e c => let (es, cp) := c.split
@@ -287,47 +308,75 @@ namespace Code
 end Code
 
 namespace Block
-  @[simp] abbrev bsig | mk bsig _code => bsig
-  @[simp] abbrev code | mk _bsig code => code
-
-  deriving instance DecidableEq for Block
+  deriving instance Repr, DecidableEq for Block
 
   instance : Inhabited Block where
     default := mk ⟨0, 0, []⟩ (.retn [])
-             --mk ⟨0, .retn 0⟩ (.retn [])
+
+  def bsig | mk bsig _code => bsig
+  def code | mk _bsig code => code
+
+  @[simp, getters] theorem get_fix {b : Block} : mk b.bsig b.code = b := rfl
+  @[simp, getters] theorem get_1 {b : Block} : b.1 = b.bsig := rfl
+  @[simp, getters] theorem get_2 {b : Block} : b.2 = b.code := rfl
+  @[simp, getters] theorem get_bsig {bsig c} : (mk bsig c).bsig = bsig := rfl
+  @[simp, getters] theorem get_code {bsig c} : (mk bsig c).code = c := rfl
 end Block
 
 
 namespace Func
-  @[simp] abbrev fsig | mk fsig _blocks => fsig
-  @[simp] abbrev blocks | mk _fsig blocks => blocks
-  @[simp] abbrev B : Func -> BlockSigs | mk _fsig blocks => blocks.map (·.bsig)
-  @[simp] abbrev size | mk _fsig blocks => blocks.length
+  def fsig | mk fsig _blocks => fsig
+  def blocks | mk _fsig blocks => blocks
+
+  @[simp, getters] theorem get_fix {f : Func} : mk f.fsig f.blocks = f := rfl
+  @[simp, getters] theorem get_1 {f : Func} : f.1 = f.fsig := rfl
+  @[simp, getters] theorem get_2 {f : Func} : f.2 = f.blocks := rfl
+  @[simp, getters] theorem get_fsig {fsig blocks} : (mk fsig blocks).fsig = fsig := rfl
+  @[simp, getters] theorem get_blocks {fsig blocks} : (mk fsig blocks).blocks = blocks := rfl
+
+  @[simp] abbrev B (f : Func) : BlockSigs :=
+    f.blocks.map (·.bsig)
+  @[simp] abbrev size (f : Func) :=
+    f.blocks.length
+  @[simp] abbrev entry (f : Func) :=
+    f.blocks[0]!.code
 
   @[simp] theorem size_eq_B_length (f : Func) : f.B.length = f.size :=
     by simp
 
-  deriving instance DecidableEq for Func
+  deriving instance Repr, DecidableEq for Func
 
   instance : Inhabited Func where
     default := mk ⟨0, 0⟩ default
 
-  instance : GetElem Func BlockIdx Block (λ f b => b < f.blocks.length) where
+  instance : GetElem Func BlockIdx Block (λ f b => b < f.size) where
     getElem f b p := f.blocks[b]
 end Func
 
 namespace Program
-  @[simp] abbrev funs | mk funs => funs
-  @[simp] abbrev fsigs : Program -> FuncSigs
-    | mk funs => funs.map (·.fsig)
-  @[simp] abbrev size : Program -> Nat
-    | mk funs => funs.length
+  def funs | mk funs => funs
+
+  @[simp, getters] theorem get_fix {P : Program} : mk P.funs = P := rfl
+  @[simp, getters] theorem get_1 {P : Program} : P.1 = P.funs := rfl
+  @[simp, getters] theorem get_funs {funs} : (mk funs).funs = funs := rfl
+
+  @[simp] abbrev fsigs (P : Program) : FuncSigs :=
+    P.funs.map (·.fsig)
+  @[simp] abbrev size (P : Program) : Nat :=
+    P.funs.length
 
   @[simp] theorem size_eq_fsigs_length (P : Program) : P.fsigs.length = P.size :=
     by simp
 
-  deriving instance DecidableEq for Program
+  deriving instance Repr, DecidableEq for Program
 
   instance : GetElem Program FuncIdx Func (λ P f => f < P.size) where
     getElem P f p := P.funs[f]
 end Program
+
+-- namespace Cont
+  -- @[simp] abbrev code (P : Program) (f : FuncIdx) (b : Cont) : Code :=
+  --   P[f]![b.b]!.code
+  -- @[simp] abbrev spawn (P : Program) (f : FuncIdx) (bspwn : BlockIdx) : Cont :=
+  --   ⟨bspwn, (List.range P[f]!.B[bspwn]!.Γ).map Var.mk⟩
+-- end Cont
