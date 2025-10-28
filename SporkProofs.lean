@@ -7,5 +7,4 @@ import SporkProofs.Semantics
 import SporkProofs.ParReduce
 import SporkProofs.Preservation
 import SporkProofs.Progress
-import SporkProofs.Inline
 import SporkProofs.Soundness
