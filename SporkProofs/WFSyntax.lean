@@ -29,7 +29,7 @@ namespace Var
     | mk : v.idx < Γ -> v.WF Γ
 
   namespace WF
-    notation (name := wfnotation) Γ:arg " ⊢ " v:arg " WF-var" => WF Γ v
+    notation (name := wfnotation) Γ:arg " ⊢ " v " WF-var" => WF Γ v
 
     theorem idx {Γ : Scope} {v : Var} : Γ ⊢ v WF-var -> v.idx < Γ | .mk idx => idx
 
@@ -52,7 +52,7 @@ namespace Atom
     | var {v : Var} : Γ ⊢ v WF-var -> (var v).WF Γ
 
   namespace WF
-    notation (name := wfnotation) Γ:arg " ⊢ " a:arg " WF-atom" => WF Γ a
+    notation (name := wfnotation) Γ:arg " ⊢ " a " WF-atom" => WF Γ a
 
     instance {Γ : Scope} : (a : Atom) -> Decidable (Γ ⊢ a WF-atom)
       | .val _v => isTrue val
@@ -74,7 +74,7 @@ namespace Expr
     | bop {o : Bop} {a b : Atom} : Γ ⊢ a WF-atom -> Γ ⊢ b WF-atom -> (bop o a b).WF Γ
 
   namespace WF
-    notation (name := wfnotation) Γ:arg " ⊢ " e:arg " WF-expr" => WF Γ e
+    notation (name := wfnotation) Γ:arg " ⊢ " e " WF-expr" => WF Γ e
 
     instance {Γ : Scope} : (e : Expr) -> Decidable (Γ ⊢ e WF-expr)
       | .nop a => decidable_of_iff (Γ ⊢ a WF-atom)
@@ -107,7 +107,7 @@ namespace Cont
     notation (name := notationwf) B:arg "; " bsig:arg " ⊢ " b:arg " ( " rets " )" " WF-cont" => WFRets B bsig rets b
   end WFRets
   namespace WF
-    notation (name := notationwf) B:arg "; " bsig:arg " ⊢ " b:arg " WF-cont" => WF B bsig b
+    notation (name := notationwf) B:arg "; " bsig:arg " ⊢ " b " WF-cont" => WF B bsig b
   end WF
 
   namespace WFRets
@@ -300,7 +300,7 @@ namespace Code
 
   namespace WF
     
-    notation (name := notationwf) P:arg "; " B:arg "; " bsig:arg " ⊢ " c:arg " WF-code" => WF P B bsig c
+    notation (name := notationwf) P:arg "; " B:arg "; " bsig:arg " ⊢ " c " WF-code" => WF P B bsig c
 
     instance instDecidable {P B bsig} : (c : Code) ->
                            Decidable (P; B; bsig ⊢ c WF-code)
@@ -516,10 +516,10 @@ end Code
 
 namespace Block
   inductive WF (P B) (b : Block) : Prop where
-    | mk (c : b.code.WF P B b.bsig)
+    | mk (c : P; B; b.bsig ⊢ b.code WF-code)
 
   namespace WF
-    notation (name := notationwf) P:arg "; " B:arg " ⊢ " b:arg " WF-block" => WF P B b
+    notation (name := notationwf) P:arg "; " B:arg " ⊢ " b " WF-block" => WF P B b
 
     instance (P B) : {b : Block} -> Decidable (P; B ⊢ b WF-block)
       | .mk bsig code =>
@@ -542,7 +542,7 @@ namespace Blocks
          (head : HeadIs bs (·.bsig) bsig)
 
   namespace WF
-    notation (name := notationwf) P:arg "; " bsig:arg " ⊢ " bs:arg " WF-blocks" => WF P bs bsig
+    notation (name := notationwf) P:arg "; " bsig:arg " ⊢ " bs " WF-blocks" => WF P bs bsig
 
     instance wf {P bs bsig}: Decidable (P; bsig ⊢ bs WF-blocks) :=
       decidable_of_iff (IVec (P; (bs.map (·.bsig)) ⊢ · WF-block) bs ∧
@@ -577,8 +577,8 @@ namespace Func
     P; ⟨f.fsig.arity, f.fsig.ret, []⟩ ⊢ f.blocks WF-blocks
 
   namespace WF
-    notation (name := notationwf) P:arg " ⊢ " f:arg " WF-func" => WF P f
-    notation (name := notationwf') P:arg " ⊢ " f:arg " WF-func'" => WF (Program.P P) f
+    notation (name := notationwf) P:arg " ⊢ " f " WF-func" => WF P f
+    notation (name := notationwf') P:arg " ⊢ " f " WF-func'" => WF (Program.P P) f
     
     instance {P f}: Decidable (P ⊢ f WF-func) := Blocks.WF.wf
 

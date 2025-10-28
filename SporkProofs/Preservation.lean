@@ -134,12 +134,34 @@ namespace Step
     · case promote f unpr bspwn prom X K b K' c u p =>
       simp[CallStack.prom_promsig_nil.mp p]
 
+  theorem goto_rets!h
+      {P} {K k} {bnext : Cont} {r r' : Nat}
+      (kwf : P; K; r' ⊢ k WF-frame)
+      (bnext_wf : P[k.f]!.B; (k.bsig! P) ⊢ bnext(r) WF-cont) :
+      P; K; r ⊢ ⟨k.f, k.ρ, k.X[bnext.args]!, bnext.b⟩ WF-frame :=
+    let req : P[k.f]!.B[bnext.b]!.r = P[k.f]!.B[k.b]!.r :=
+      congrArg BlockSig.r bnext_wf.bsig! ▸
+      getElem!_pos P k.f kwf.flt ▸
+      rfl
+    StackFrame.WF.goto_rets! kwf.flt kwf.ρwf
+      (getElem!_pos P k.f kwf.flt ▸ req ▸ bnext_wf)
+
+  theorem goto!h
+      {P} {K k} {bnext : Cont}
+      (kwf : P; K ⊢ k WF-frame)
+      (bnext_wf : P[k.f]!.B; (k.bsig! P) ⊢ bnext WF-cont) :
+      P; K ⊢ ⟨k.f, k.ρ, k.X[bnext.args]!, bnext.b⟩ WF-frame :=
+    goto_rets!h kwf bnext_wf.cast0
   
   open ThreadTree.WF (thread node) in
   theorem preservation {P : Program} (Pwf : P WF-program) :
                        {R R' : ThreadTree} ->
                        P ⊢ R WF-tree -> P ⊢ R ↦ R' -> P ⊢ R' WF-tree := by
-    intro R R' wf R_R'; cases R_R' <;> cases wf
+    intro R R' wf R_R'
+    cases R_R' <;>
+    cases wf <;>
+    try (apply thread) <;>
+    try (apply Thread.WF.fromStack! Pwf)
 
     · case congr_parent Rp Rp' Rc Rp_Rp' Rpwf Rcwf Rcp Rpp =>
         exact node (preservation Pwf Rpwf Rp_Rp') Rcwf (preserve_promsig Rp_Rp' Rpwf ▸ Rpp) Rcp
@@ -150,202 +172,156 @@ namespace Step
                         (preserve_prom Rc_Rc' Rcwf ▸ Rcp)
 
     · case stmt f K ρ X b e v c a wf =>
-        apply thread
         exact match wf with
            | .mk (Kwf ⬝wf (.mk flt blt bsig ρwf)) (.stmt ewf cwf) =>
-             let flt : f < P.size := wf.K.current.flt
-             .mk (Kwf ⬝wf (.mk (X := X.concat v) flt blt
-                    ⟨by simp; simp at bsig;
-                        exact Nat.le_trans bsig.1 (Nat.le_add_right X.length 1), bsig.2⟩
-                    ρwf))
-             --(.mk bwf.blt bwf.bsig (bwf.args.map (λ x xwf => by simp; exact xwf.weaken)))
+             .mk (Kwf ⬝wf (.mk flt blt
+                    ⟨by simpa using Nat.le_trans bsig.1 (Nat.le_add_right X.length 1), bsig.2⟩ ρwf))
                  (by simp[BlockSig.bind] at cwf; simp; exact cwf)
 
     · case goto f K ρ X b bnext wf =>
-        apply thread
-        exact match wf with
-          | .mk (Kwf ⬝wf (.mk flt blt bsig ρwf)) (.goto bnext_wf) =>
-              by simp only [getters] at bnext_wf; exact
-              .mk ((by simp only[StackFrame.ret, getters, CallStack.bsig] at Kwf bsig bnext_wf
-                       simp only[StackFrame.ret, getters]
-                       rw[bnext_wf.bsig]
-                       exact Kwf) ⬝wf
-                   (.mk flt bnext_wf.blt ⟨bnext_wf.bsig ▸
-                                          by simp;
-                                             let x := argsOfGetElem bnext_wf.args
-                                             simp at x
-                                             rw[x, X.getElem_length bnext_wf.args]
-                                             exact Nat.le_refl bnext.args.length,
-                                          bsig.2 ▸ congrArg (·.σ) bnext_wf.bsig ▸
-                                          by simp only [getters, CallStack.bsig, bsig.2]⟩ ρwf))
-                  (by simp only [CallStack.bsig, getters]
-                      let p := wf.c.goto_bnext.bsig
-                      simp only [Thread.K, CallStack.head, StackFrame.f] at p
-                      let bnextlt : bnext.b < P[f].B.length :=
-                        by simp; rw[← List.length_map Block.bsig]; exact bnext_wf.blt
-                      let bnextlt_wf : bnext.b < P[f].size :=
-                        by simpa using wf.c.goto_bnext.blt
-                      let cwf := Pwf⁅f⁆⁅bnext.b⁆.code
-                      simp only [getters] at cwf
-                      simp only [← getElem!_pos P[f].B bnext.b bnextlt] at p cwf ⊢
-                      simp only [← getElem!_pos P f flt] at p cwf ⊢
-                      simp at cwf
-                      rw[p]
-                      simp only [getElem!_pos P f flt] at p cwf ⊢
-                      simp only [getElem!_pos P[f].B bnext.b bnextlt] at p cwf ⊢
-                      simp only [getters, CallStack.bsig, ← bsig.2]
-                      simp only [getElem!_pos P[f] bnext.b bnextlt_wf]
-                      let cwf₂ : P.fsigs; P[f].B; P[f].B[bnext.b] ⊢ P[f][bnext.b].code WF-code :=
-                        by simp; exact cwf
-                      let xpf : X[bnext.args]!.length = P[f].B[bnext.b].Γ :=
-                        argsOfGetElem bnext_wf.args ▸
-                        ValMap.getElem_length bnext_wf.args ▸
-                        (congrArg BlockSig.Γ bnext_wf.bsig).symm
-                      rw[xpf]
-                      rw[← @BlockSig.get_fix P[f].B[bnext.b]] at cwf₂
-                      let rpf := congrArg BlockSig.r wf.c.goto_bnext.bsig
-                      let σpf := congrArg BlockSig.σ wf.c.goto_bnext.bsig
-                      let σpf' : P[f].B[b].σ = SpawnDeque.sig P[f].B ρ :=
-                        wf.K.current.bsig.2
-                      simp only [getters, CallStack.bsig] at rpf σpf
-                      rw[← rpf, σpf']
-                      rw[σpf] at cwf₂
-                      exact cwf₂)
+        apply (· ⬝wf ·)
+        · apply goto!h wf.K.current wf.c!.goto_bnext
+        · let h : P[f]!.B[bnext.b]! = _ := wf.c!.goto_bnext.bsig!
+          simpa only [StackFrame.ret!, getters, h] using wf.K.tail
 
-    · case ite_true f K ρ X cond bthen belse n cond_n neq0 wf =>
-        apply thread
-        exact match wf with
-          | .mk (Kwf ⬝wf (.mk flt blt bsig ρwf)) (.ite cond_wf bthen_wf belse_wf) =>
-            .mk (Kwf ⬝wf (.mk sorry sorry sorry sorry))
-                (.goto Pwf p ρwf bthen_wf)
+    · case ite_true f K ρ X b cond bthen belse n cond_n neq0 wf =>
+        apply (· ⬝wf ·)
+        · apply goto!h wf.K.current wf.c!.ite_bthen
+        · let h : P[f]!.B[bthen.b]! = _ := wf.c!.ite_bthen.bsig!
+          simpa only [StackFrame.ret!, getters, h] using wf.K.tail
 
-    · case ite_false f K ρ X cond bthen belse cond_0 wf =>
-        apply thread
-        exact match wf with
-          | Kwf ⬝wf (.mk p ρwf _ (.code (.ite cond_wf bthen_wf belse_wf))) =>
-            Kwf ⬝wf (.goto Pwf p ρwf belse_wf)
+    · case ite_false f K ρ X cond b bthen belse cond_0 wf =>
+        apply (· ⬝wf ·)
+        · apply goto!h wf.K.current wf.c!.ite_belse
+        · let h : P[f]!.B[belse.b]! = _ := wf.c!.ite_belse.bsig!
+          simpa only [StackFrame.ret!, getters, h] using wf.K.tail
 
-    · case call f g K ρ X x bret wf =>
-        apply thread
-        exact match wf with
-          | Kwf ⬝wf kwf@(.mk fwf ρwf _ (.code (.call flt sigwf x_wf
-                bret_wf@(.mk bret_lt bret_sig_wf argswf)))) =>
-              let bret_wf' : Cont.WFRets P[f].bsigs ⟨X.length, ρ.sig⟩
-                               P.fsigs[g].ret bret :=
-                P.funs.getElem_map (·.fsig) ▸ bret_wf
-              let gframe_wf :=
-                StackFrame.WF.goto_entry
-                  (f := g) Pwf (P.size_eq_fsigs_length ▸ flt)
-                  x_wf (P.funs.getElem_map (·.fsig) ▸ sigwf)
-              let glt := gframe_wf.flt
-              let bret_wf'' : Cont.WFRets P[f].bsigs ⟨X.length, ρ.sig⟩
-                                P[g].fsig.ret bret :=
-                P.funs.getElem_map (·.fsig) ▸ bret_wf'
-              Kwf ⬝wf ⟨fwf, ρwf, rfl, .cont bret_wf''⟩ ⬝wf gframe_wf
+    · case call f g K ρ b X x bret wf =>
+        apply (· ⬝wf · ⬝wf ·)
+        · apply StackFrame.WF.entry Pwf (by simpa using wf.c.call_flt)
+          · rw[getElem!_pos X x wf.c.call_args,
+               X.getElem_length wf.c.call_args]
+            simpa [← List.getElem_map Func.fsig] using wf.c.call_arity
+        · let p := wf.K.tail
+          let s := congrArg BlockSig.r wf.c!.call_bret.bsig!
+          simp only [StackFrame.ret!, getters, CallStack.bsig!, StackFrame.bsig!] at p s ⊢
+          rw[s]
+          exact p
+        · apply goto_rets!h wf.K.current
+          · let glt : g < P.size := by simpa using wf.c.call_flt
+            let zlt : 0 < P[g].B.length := Pwf⁅g⁆.head.zero_lt_map
+            let gsig : P[g].B[0].r = P[g].fsig.ret :=
+              congrArg BlockSig.r Pwf⁅g⁆.head.get0eq_map
+            simpa only [getters,
+                       CallStack.bsig!,
+                       getElem!_pos P g glt,
+                       getElem!_pos P[g].B 0 zlt,
+                       Option.getD_some,
+                       StackFrame.ret!,
+                       Program.fsigs,
+                       List.getElem_map Func.fsig,
+                       gsig]
+            using wf.c!.call_bret
 
-    · case retn f g K ρ X Y y bret wf =>
-        apply thread
-        exact match wf with
-          | Kwf ⬝wf (.mk flt ρwf _ (.cont bret_wf))
-                ⬝wf (.mk glt ⟨.nil, _⟩ _ (.code (.retn _ ylen y_wf))) =>
-            Kwf ⬝wf (.goto_rets Pwf flt ρwf (ylen ▸ bret_wf) y_wf)
+    · case retn f g K ρ X Y y b bret wf =>
+        let ypf : (Y[y]'wf.c.retn_args).length = P[g]!.B[b]!.r :=
+          Y.getElem_length wf.c.retn_args ▸
+          wf.c.retn_length ▸
+          getElem!_pos P g wf.K.current.flt ▸
+          getElem!_pos (P[g]'wf.K.current.flt).B b wf.K.current.blt ▸
+          rfl
+        apply (· ⬝wf ·)
+        · apply StackFrame.WF.mk
+          · exact ⟨getElem!_pos Y y wf.c.retn_args ▸
+                   List.length_append ▸
+                   ypf ▸
+                   wf.K.tail.head.bsig.1,
+                   wf.K.tail.head.bsig.2⟩
+          · exact wf.K.tail.head.ρwf
+        · exact wf.K.tail.tail
 
-    · case spork f K ρ X g g_args bbody wf =>
-       apply thread
-       exact match wf with
-         | Kwf ⬝wf ⟨flt, ⟨unpr_wf, prom_wf⟩, _, .code
-               (.spork glt gsig g_args_wf bbody_wf)⟩ =>
-           let glt' : g < P.funs.length := List.length_map (α := Func) (·.fsig) ▸ glt
-           let h : FuncSig.mk X[g_args]!.length P[g]!.fsig.ret = P.fsigs[g] :=
-             argsOfGetElem g_args_wf ▸
-             getElem!_pos P g glt' ▸
-             g_args_wf.map_length (λ x xwf => X[x]) ▸
-             gsig ▸
-             List.getElem_map (·.fsig) (l := P.funs) (h := glt) ▸
-             rfl
-           Kwf ⬝wf (.goto Pwf flt ⟨unpr_wf.concat ⟨glt, h⟩, prom_wf⟩
-                     (by rw[ρ.pushsig, getElem!_pos P g glt']
-                         simp at bbody_wf; simp
-                         exact bbody_wf))
+    · case spork f K ρ X b bbody bspwn wf =>
+        apply (· ⬝wf ·)
+        · apply StackFrame.WF.mk
+          · apply And.intro
+            · let apf := congrArg BlockSig.Γ wf.c.spork_bbody.bsig
+              simp only [getters] at apf
+              rw[getElem!_pos X bbody.args wf.c.spork_bbody.args,
+                 X.getElem_length wf.c.spork_bbody.args,
+                 ← apf, Option.getD_none, Nat.add_zero]
+              exact Nat.le_refl ((P[f]'wf.K.current.flt).B[bbody.b]'wf.c.spork_bbody.blt).Γ
+            · let bpf := congrArg BlockSig.σ wf.c.spork_bbody.bsig
+              simp only [getters, CallStack.bsig, StackFrame.bsig] at bpf
+              rw[SpawnDeque.pushsig, bpf]
+              simp only [getters]
+          · apply wf.K.current.ρwf.push
+            · apply SpawnBlock.WF.mk <;> simp only [getters]
+              · rw[getElem!_pos X bspwn.args wf.c.spork_bspwn.args,
+                   X.getElem_length wf.c.spork_bspwn.args]
+                exact congrArg BlockSig.Γ wf.c.spork_bspwn.2
+              · exact congrArg BlockSig.σ wf.c.spork_bspwn.2
+              · exact wf.c.spork_bspwn.1
+        · let h : P[f]!.B[bbody.b]! = _ := wf.c!.spork_bbody.bsig!
+          simpa only [StackFrame.ret!, getters, h] using wf.K.tail
 
-    · case promote f unpr g prom X K c K' u p wf =>
-        let kProm := CallStack.allPromoted_iff_nil.mpr u
-        let rec hp : {K' : CallStack} -> {gets : Option Nat} -> K'.prom = [] ->
-                     P; gets ⊢ (K ⬝ ⟨f, ⟨g :: unpr, prom⟩, X, c⟩ ++ K') WF-stack ->
-                     P; gets ⊢ (K ⬝ ⟨f, ⟨unpr, g.ret :: prom⟩, X, c⟩ ++ K') WF-stack ∧
-                     P; none ⊢ {⟨g.f, ∅, g.args, .codeEntry P g.f⟩} WF-stack ∧
-                     g.ret = P[g.f]!.fsig.ret
-          | .nil, gets, _, wf => by
-            rw[CallStack.append_nil] at *
-            apply And.intro <;> try (apply And.intro)
-            · exact wf.tail ⬝wf
-                (let kwf := wf.head
-                 ⟨wf.head.flt,
-                  (let x := wf.head.ρwf
-                   by rw[kProm] at *; exact x.promote),
-                  wf.head.cb,
-                  wf.head.cwf⟩)
-            · apply (.nil ⬝wf ·)
-              let glt : g.f < P.funs.length := by
-                rw[← List.length_map (·.fsig)]
-                exact wf.head.ρwf.unpr.head'.flt
-              let Psize : P.funs.length = P.fsigs.length :=
-                (List.length_map (as := P.funs) (·.fsig)).symm
-              let glt' := Psize ▸ glt
-              exact StackFrame.WF.mk glt SpawnDeque.WF.empty rfl
-                (StackFrame.WF.entry (canProm := true) Pwf glt
-                  (List.getElem_map Func.fsig (l := P.funs) ▸
-                   (congrArg (·.arity) wf.head.ρwf.unpr.head'.sig).symm)
-                ).cwf
-            · let gflt := wf.head.ρwf.unpr.head'.flt
-              let gflt' : g.f < P.funs.length :=
-                List.length_map (as := P.funs) (·.fsig) ▸ gflt
-              let x : g.ret = P.fsigs[g.f].ret :=
-                congrArg (·.ret) wf.head.ρwf.unpr.head'.sig
-              rw[getElem!_pos P g.f gflt',
-                 x,
-                 List.getElem_map (·.fsig) (l := P.funs)]
-          | K' ⬝ k', gets, p, wf =>
-            let ⟨kp', Kp'⟩ := List.append_eq_nil_iff.mp p
-            let k'wf := wf.head
-            let ⟨K'wf', gwf, glt⟩ := hp Kp' wf.tail
-            let l := K'wf'
-            let k'wf' := k'wf.castCanProm
-              (K ⬝ ⟨f, ⟨unpr, g.ret :: prom⟩, X, c⟩ ++ K').allPromoted
-              (λ (x : (K ⬝ ⟨f, ⟨g :: unpr, prom⟩, X, c⟩ ++ K').allPromoted) =>
-                 let x' : (K ⬝ ⟨f, ⟨g :: unpr, prom⟩, X, c⟩ ++ K').unpr = [] :=
-                   by simp_all[x]
-                 let x'' : g :: unpr = [] :=
-                   (List.append_eq_nil_iff.mp
-                     (List.append_eq_nil_iff.mp
-                       (CallStack.append_unpr ▸ x')).left).right
-                 nomatch x'')
-            ⟨K'wf' ⬝wf k'wf', gwf, glt⟩
-        let ⟨Kwf, gwf, glt⟩ := hp p wf
-        exact node (thread Kwf) (thread gwf) (by simp_all) (by simp)
+    · case promote f unpr bspwn prom X K b K' c u p wf =>
+        exact node
+          (thread (wf.promote (by simp[u])))
+          (thread (Thread.WF.spawn! Pwf wf.K.peep.flt wf.K.peep.ρwf.unpr.head'))
+          (by simp[CallStack.prom_promsig_nil.mp p])
+          rfl
+    
+    · case spoin_unpr f K bspwn ρ X b bunpr bprom wf =>
+        apply (· ⬝wf ·)
+        · apply StackFrame.WF.mk
+          · apply And.intro
+            · let apf := congrArg BlockSig.Γ wf.c.spoin_bunpr.bsig
+              simp only [getters] at apf
+              rw[getElem!_pos X bunpr.args wf.c.spoin_bunpr.args,
+                 X.getElem_length wf.c.spoin_bunpr.args,
+                 ← apf, Option.getD_none, Nat.add_zero]
+              exact Nat.le_refl ((P[f]'wf.K.current.flt).B[bunpr.b]'wf.c.spoin_bunpr.blt).Γ
+            · let bpf := congrArg BlockSig.σ wf.c.spoin_bunpr.bsig
+              simp only [getters, CallStack.bsig, StackFrame.bsig,
+                         SpawnDeque.pushsig, List.tail_cons] at bpf
+              rw[bpf]
+          · exact wf.K.current.ρwf.unpush
+        · let h : P[f]!.B[bunpr.b]! = _ := wf.c!.spoin_bunpr.bsig!
+          simpa only [StackFrame.ret!, getters, h] using wf.K.tail
 
-    · case spoin_unpr f K ρ sc X bunpr bprom wf =>
-        apply thread
-        exact match wf with
-          | Kwf ⬝wf ⟨flt, ⟨unpr_wf, prom_wf⟩, _,
-              .code (.spoin nn bunpr_wf bprom_wf)⟩ =>
-            let h : (ρ.push sc).sig.tail = ρ.sig := by simp
-            Kwf ⬝wf (.goto Pwf flt ⟨unpr_wf.unconcat.1, prom_wf⟩ (h ▸ bunpr_wf))
-
-    · case spoin_prom f K ρ' X bunpr bprom Y y g K_unpr_nil wf retwf Rp R'p =>
-        let g_ret_eq : g.ret = P[g.f]!.fsig.ret :=
-          congrArg (λ | some x => x | _ => g.ret) R'p
-        apply thread
-        let wf'' : (ThreadTree.thread (K ⬝ ⟨f, ⟨[], g.ret :: ρ'⟩, X,
-                      .code (.spoin bunpr bprom)⟩)).WF P :=
-          g_ret_eq ▸ wf
-        let flt := wf''.get.head.flt
-        let sd_wf : (SpawnDeque.mk [] ρ').WF P.fsigs K.allPromoted :=
-          ⟨IVec.nil, by simp[K_unpr_nil]; rfl⟩
-        let y_wf : IVec (·.WF Y.length) y := retwf.get.head.cwf.c.retn_args
-        let y_len_eq_g_ret : y.length = g.ret := g_ret_eq ▸ retwf.get.head.cwf'.c.retn_length.symm
-        let cont_wf : bprom.WFRets P[f].bsigs ⟨X.length, ρ'⟩ y.length :=
-          y_len_eq_g_ret ▸ wf''.get.head.cwf.c.spoin_bprom
-        exact wf''.get.tail ⬝wf
-          (.goto_rets Pwf flt sd_wf cont_wf y_wf)
+    · case spoin_prom f g K ρ X b b' bunpr bprom Y y bspwn K_unpr_nil Rpwf Rcwf ret_prom_nil heq =>
+        let flt : f < P.size := Rpwf.get.K.current.flt
+        let glt : g < P.size := Rcwf.get.K.current.flt
+        apply (· ⬝wf ·)
+        · apply StackFrame.WF.mk
+          · apply And.intro
+            · let apf := congrArg BlockSig.Γ Rpwf.get.c.spoin_bprom.bsig
+              simp only [getters, CallStack.bsig, StackFrame.bsig] at apf
+              simp only [getters, ThreadTree.promsig,
+                         Thread.promsig, CallStack.promsig, SpawnDeque.promsig,
+                         ThreadTree.retjoin, Thread.retjoin, CallStack.retjoin] at heq
+              rw[List.map_cons, List.cons_append, List.head?_cons, Option.some_inj,
+                 getElem!_pos P f flt, getElem!_pos P g glt,
+                 getElem!_pos P[g].B b'] at heq
+              rw[getElem!_pos X bprom.args Rpwf.get.c.spoin_bprom.args,
+                 getElem!_pos Y y Rcwf.get.c.retn_args,
+                 List.length_append,
+                 X.getElem_length Rpwf.get.c.spoin_bprom.args,
+                 Y.getElem_length Rcwf.get.c.retn_args,
+                 Option.getD_none, Nat.add_zero, apf]
+              simp only [SpawnDeque.sig, getters, SpawnDeque.out, List.reverseAux, List.map, List.head]
+              let bpf := Rcwf.get.c.retn_length
+              simp only [getters, CallStack.head, CallStack.bsig, StackFrame.bsig] at bpf
+              rw[← bpf, ← heq]
+              exact Nat.le_refl _
+            · let bpf := congrArg BlockSig.σ Rpwf.get.c.spoin_bprom.bsig
+              simp only [getters, CallStack.bsig, StackFrame.bsig,
+                         SpawnDeque.pushsig, List.tail_cons] at bpf
+              rw[bpf]
+              simp[Rpwf.get.K.current.bsig.2]
+          · let a : P[f].B; K.allPromoted ⊢ ⟨[], bspwn :: ρ⟩ WF-deque :=
+              Rpwf.get.K.current.ρwf
+            exact ⟨a.1, by simp[K_unpr_nil]; exact rfl⟩
+        · let h : P[f]!.B[bprom.b]! = _ := Rpwf.get.c!.spoin_bprom.bsig!
+          simpa only [StackFrame.ret!, getters, h] using Rpwf.get.K.tail
 end Step

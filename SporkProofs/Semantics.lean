@@ -237,6 +237,9 @@ namespace SpawnDeque
 
   instance : EmptyCollection SpawnDeque := ⟨⟨[], []⟩⟩
   deriving instance Repr, DecidableEq, Inhabited for SpawnDeque
+  
+  @[simp, getters] theorem unpr_nil : (∅ : SpawnDeque).unpr = [] := rfl
+  @[simp, getters] theorem prom_nil : (∅ : SpawnDeque).prom = [] := rfl
 
   theorem sig_nil {B} : sig B ∅ = [] := rfl
 end SpawnDeque
@@ -305,6 +308,7 @@ namespace CallStack
   @[simp] theorem nil_append : {K : CallStack} -> nil ++ K = K
     | .nil => rfl
     | _K ⬝ _k => append_cons ▸ nil_append ▸ rfl
+  @[simp] theorem append_one {K : CallStack} {k : StackFrame} : K ++ {k} = K ⬝ k := rfl
   theorem append_assoc : {K K' K'' : CallStack} -> (K ++ K') ++ K'' = K ++ (K' ++ K'')
     | _K, _K', nil => rfl
     | _K, _K', _K'' ⬝ k =>
@@ -498,7 +502,7 @@ inductive Step (P : Program) : (R R' : ThreadTree) -> Type where
 
   | call {f g K ρ b X x bret} :
     Step P {K ⬝ ⟨f, ρ, X, b⟩ ⋄ .call g x bret}
-           {K ⬝ ⟨f, ρ, X[bret.args]!, bret.b⟩ ⬝ ⟨g, {}, X[x]!, 0⟩ ⋄ P[g]!.entry}
+           {K ⬝ ⟨f, ρ, X[bret.args]!, bret.b⟩ ⬝ ⟨g, {}, X[x]!, 0⟩ ⋄ P[g]![0]!.code}
 
   | retn {f g K ρ X Y y b bret} :
     Step P {K ⬝ ⟨f, ρ, X, bret⟩ ⬝ ⟨g, {}, Y, b⟩ ⋄ .retn y}
