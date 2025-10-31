@@ -45,6 +45,27 @@ namespace IVec
     | a :: _as, f, g, cons va vas =>
       cons (g a va) (vas.from_map' f g)
 
+  theorem from_map_list {α α' : Type} {β : α' -> Sort} {f : α -> α'} (p : (a : α) -> β (f a)) : {l : List α} -> IVec β (l.map f)
+    | [] => nil
+    | a :: as => cons (p a) (from_map_list p (l := as))
+
+  theorem from_mapIdx' {α α' : Type} {β : α -> Sort} {β' : α' -> Sort} : {l : List α} -> (f : α -> α') -> (g : (i : Nat) -> (ilt : i < l.length) -> (a : α) -> (a = l[i]) -> (b : β a) -> β' (f a)) -> (v : IVec β l) -> IVec β' (l.map f)
+    | [], _f, _g, _v => nil
+    | a :: as, f, g, cons va vas =>
+      cons (g 0 as.length.zero_lt_succ a rfl va)
+           (vas.from_mapIdx' f
+             (λ i ilt a aeq => g i.succ (by simp; exact ilt) a (by simp; exact aeq)))
+  
+  theorem zip {α : Type} {β₁ : α -> Sort} {β₂ : α -> Sort} : {l : List α} -> IVec β₁ l -> IVec β₂ l -> IVec (λ a => β₁ a ∧ β₂ a) l
+    | [], nil, nil => nil
+    | _a :: _as, cons b₁ bs₁, cons b₂ bs₂ => cons ⟨b₁, b₂⟩ (zip bs₁ bs₂)
+  
+  theorem unzip {α : Type} {β₁ : α -> Sort} {β₂ : α -> Sort} : {l : List α} -> IVec (λ a => β₁ a ∧ β₂ a) l -> IVec β₁ l ∧ IVec β₂ l
+    | [], nil => ⟨nil, nil⟩
+    | _a :: _as, cons ⟨b₁, b₂⟩ bs₁₂ =>
+      let ⟨bs₁, bs₂⟩ := unzip bs₁₂
+      ⟨cons b₁ bs₁, cons b₂ bs₂⟩
+
   theorem map {α : Type} {β β' : α -> Sort} : {l : List α} -> ((a : α) -> β a -> β' a) -> IVec β l -> IVec β' l
     | [], _g, _v => nil
     | a :: _as, g, v => cons (g a v.head') (v.tail.map g)

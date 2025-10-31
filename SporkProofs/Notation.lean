@@ -5,42 +5,81 @@ open Lean Elab Macro
 
 inductive UnannotatedBlock where
   | mk (name: String) (args : Scope) (c : Code)
+  deriving Inhabited
 
 @[simp] abbrev mkfunc (fname : String) : List UnannotatedBlock -> Func
   | bs => let bs' := infer_bsigs bs
           Func.mk (getfsig bs') bs'
   where
-    getfsig : List Block -> FuncSig
-      | [] => panic "cannot infer signature of empty function!"
-      | .mk ⟨Γ, r, _σ⟩ _c :: _rest => .mk Γ r
+    
+    @[simp] rsig_retn := true
+    @[simp] rsig_exit := false
 
-    get_bsig' (bs : List (UnannotatedBlock ⊕ Block)) (b : Cont) : Option BlockSig :=
+    @[simp] infer_rsigs_h (bs : List UnannotatedBlock) (rsigs : List (Option Bool)) : List (Option Bool) :=
+      Nat.fold bs.length
+        (λ i ilt rsigs =>
+          if let some rsig := rsigs[i]? then
+          match bs[i].3.split.2 with
+           | ⟨.stmt e c, notstmt⟩ => nomatch notstmt e c
+           | ⟨.goto bnext, _⟩ => rsigs.set bnext.b rsig
+           | ⟨.ite cond bthen belse, _⟩ => (rsigs.set bthen.b rsig).set belse.b rsig
+           | ⟨.call f args bret, _⟩ => rsigs.set bret.b rsig
+           | ⟨.retn args, _⟩ => rsigs
+           | ⟨.spork bbody bspwn, _⟩ => (rsigs.set bbody.b rsig).set bspwn.b rsig_exit
+           | ⟨.spoin bunpr bprom, _⟩ => (rsigs.set bunpr.b rsig).set bprom.b rsig
+          else rsigs)
+        rsigs
+    
+    /--
+    Determines whether each block is part of a returning component or an exiting one.
+    Initially, we only know that the entry block must be a return.
+     -/
+    @[simp] infer_rsigs (bs : List UnannotatedBlock) : List (Option Bool) :=
+      Nat.repeat (infer_rsigs_h bs) bs.length
+        (some rsig_retn :: List.replicate bs.length.pred none)
+    
+    @[simp] getfsig : List Block -> FuncSig
+      | [] => panic "cannot infer signature of empty function!"
+      | .mk ⟨Γ, r, _σ⟩ _c :: _rest => .mk Γ r.n
+
+    @[simp] get_bsig' (bs : List (UnannotatedBlock ⊕ Block)) (b : Cont) : Option BlockSig :=
       bs[b.b]? >>= Sum.elim (λ _ => none) (λ b => some b.bsig)
 
-    get_bsig (bs : List (UnannotatedBlock ⊕ Block)) (b : Cont) : Option (Nat × List Nat) :=
+    @[simp] get_bsig (bs : List (UnannotatedBlock ⊕ Block)) (b : Cont) : Option (ResultSig × List Nat) :=
       (get_bsig' bs b).map (λ bsig => (bsig.r, bsig.σ))
 
-    infer_bsig (bs : List (UnannotatedBlock ⊕ Block)) : Code -> Option (Nat × List Nat)
-      | .stmt _e c => infer_bsig bs c
+    @[simp] mkrsig (rsig : Bool) : Nat -> ResultSig :=
+      if rsig = rsig_retn then
+        ResultSig.retn
+      else
+        ResultSig.exit
+
+    @[simp] infer_bsig (rsig : Bool) (bs : List (UnannotatedBlock ⊕ Block)) : Code -> Option (ResultSig × List Nat)
+      | .stmt _e c => infer_bsig rsig bs c
       | .goto bnext => get_bsig bs bnext
       | .ite _cond bthen belse => get_bsig bs bthen <|> get_bsig bs belse
       | .call _f _args bret => get_bsig bs bret
-      | .retn args => some (args.length, [])
+      | .retn args => some (mkrsig rsig args.length, [])
       | .spork bbody _bspwn =>
         (get_bsig bs bbody).map (λ (r, σ) => (r, σ.tail))
       | .spoin _bunpr bprom =>
         (get_bsig' bs bprom).map (λ bsig => (bsig.r, (bsig.Γ - bprom.args.length) :: bsig.σ))
 
-    infer_bsigs_h (bs : List (UnannotatedBlock ⊕ Block)) : List (UnannotatedBlock ⊕ Block) :=
-      bs.map (λ b => b.elim (λ ub => (infer_bsig bs ub.3).elim b
-                                       (λ (r, σ) => .inr ⟨⟨ub.2, r, σ⟩, ub.3⟩))
-                            .inr)
-    infer_bsigs (ubs: List UnannotatedBlock) : List Block :=
-      let xs := Nat.repeat infer_bsigs_h ubs.length (ubs.map Sum.inl)
+    @[simp] infer_bsigs_h (rsigs : List Bool)
+                          (bs : List (UnannotatedBlock ⊕ Block)) :
+                          List (UnannotatedBlock ⊕ Block) :=
+      bs.mapIdx λ i b =>
+        b.elim (λ ub => (infer_bsig rsigs[i]! bs ub.3).elim b
+                          λ (r, σ) => .inr ⟨⟨ub.2, r, σ⟩, ub.3⟩)
+               .inr
+    @[simp] infer_bsigs (ubs: List UnannotatedBlock) : List Block :=
+      let rsigs := infer_rsigs ubs
+      let rsigs := rsigs.mapIdx (λ i r => r.elim (panic ("failed to infer result signature for block " ++ ubs[i]!.1 ++ " in function " ++ fname)) (·))
+      let xs := Nat.repeat (infer_bsigs_h rsigs) ubs.length (ubs.map Sum.inl)
       xs.map (·.elim (λ ub => panic ("failed to infer signature for block " ++ ub.1 ++ " in function " ++ fname)) (·))
 
-def makeprogram (F : List Func) : Program :=
-  Program.mk F
+-- def makeprogram (F : List Func) : Program :=
+--   Program.mk F
 
 -- def makeprogram (F : List Func) : Program :=
 --   let P := Program.mk F
@@ -206,7 +245,7 @@ macro_rules
   | `(parsefuncs func $x:ident ($bbs,*) $pfs:PF*) =>
     `(mkfunc $(identToStr x) (blocklets $(bbs.getElems.map bbToIdent)* from 0 in parseblocks $bbs*) :: parsefuncs $pfs*)
   | `(PROGRAM ($pfs,*)) =>
-    `(makeprogram (blocklets $(pfs.getElems.map pfToIdent)* from 0 in parsefuncs $pfs*))
+    `(Program.mk (blocklets $(pfs.getElems.map pfToIdent)* from 0 in parsefuncs $pfs*))
 
   | `(parseblocks) => `([])
   | `(parseblocks block $x:ident ($args:ident,*) {$cs:stmtget} $bbs:BB*) =>

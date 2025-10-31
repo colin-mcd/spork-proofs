@@ -223,16 +223,16 @@ namespace SpawnDeque
   @[simp] def out : SpawnDeque -> List SpawnBlock
     | mk u p => List.reverseAux u p
   @[simp] def promsig (B : List BlockSig) (ρ : SpawnDeque) : List Nat :=
-    ρ.prom.map (B[·.b]!.r)
+    ρ.prom.map (B[·.b]!.r.n)
   @[simp] def sig (B: List BlockSig) (ρ : SpawnDeque) : List Nat :=
-    ρ.out.map (B[·.b]!.r)
+    ρ.out.map (B[·.b]!.r.n)
   @[simp] def push : SpawnDeque -> SpawnBlock -> SpawnDeque
     | ⟨u, p⟩, bspwn => ⟨u.concat bspwn, p⟩
   @[simp] def pop_prom : SpawnDeque -> SpawnDeque
     | ⟨bspwn :: u, p⟩ => ⟨u, bspwn :: p⟩
     | ⟨[], p⟩ => ⟨[], p⟩
   theorem pushsig (B: List BlockSig) (ρ : SpawnDeque) (bspwn : SpawnBlock)
-                  : (ρ.push bspwn).sig B = B[bspwn.b]!.r :: ρ.sig B :=
+                  : (ρ.push bspwn).sig B = B[bspwn.b]!.r.n :: ρ.sig B :=
     by simp
 
   instance : EmptyCollection SpawnDeque := ⟨⟨[], []⟩⟩
@@ -368,16 +368,16 @@ namespace CallStack
   theorem head!_eq_head : {K : CallStack} -> (nn : K ≠ nil) -> K.head! = K.head nn
     | _K ⬝ _k, _nn => rfl
 
-  @[simp] def retjoin (P : Program) : CallStack -> Nat
+  @[simp] def exitsig (P : Program) : CallStack -> Nat
     | nil => default
-    | nil ⬝ k => P[k.f]!.B[k.b]!.r
-    | K ⬝ _k => K.retjoin P
+    | nil ⬝ k => P[k.f]!.B[k.b]!.r.n
+    | K ⬝ _k => K.exitsig P
 
-  @[simp] theorem retjoin_first {P : Program} : {k : StackFrame} -> {K : CallStack} ->
-                                ({k} ++ K).retjoin P = P[k.f]!.B[k.b]!.r
+  @[simp] theorem exitsig_first {P : Program} : {k : StackFrame} -> {K : CallStack} ->
+                                ({k} ++ K).exitsig P = P[k.f]!.B[k.b]!.r.n
     | _k, .nil => rfl
     | _k, .nil ⬝ _k' => rfl
-    | _k, K ⬝ k' ⬝ _k'' => retjoin_first (K := K ⬝ k')
+    | _k, K ⬝ k' ⬝ _k'' => exitsig_first (K := K ⬝ k')
 
   deriving instance Repr, DecidableEq for CallStack
 
@@ -401,8 +401,8 @@ namespace Thread
   @[simp, getters] theorem get_K {K c} : (K ⋄ c).K = K := rfl
   @[simp, getters] theorem get_c {K c} : (K ⋄ c).c = c := rfl
   
-  @[simp] def retjoin (P : Program) : Thread -> Nat
-    | K ⋄ _c => K.retjoin P
+  @[simp] def exitsig (P : Program) : Thread -> Nat
+    | K ⋄ _c => K.exitsig P
 
   @[simp] def prom (T : Thread) := T.K.prom
   @[simp] def unpr (T : Thread) := T.K.unpr
@@ -432,9 +432,9 @@ namespace ThreadTree
   instance : Inhabited ThreadTree where
     default := thread default
 
-  @[simp] def retjoin (P : Program) : ThreadTree -> Nat
-    | thread T => T.retjoin P
-    | Rp ⋏ _Rc => Rp.retjoin P
+  @[simp] def exitsig (P : Program) : ThreadTree -> Nat
+    | thread T => T.exitsig P
+    | Rp ⋏ _Rc => Rp.exitsig P
 
   @[simp] def prom : ThreadTree -> List SpawnBlock
     | thread T => T.prom

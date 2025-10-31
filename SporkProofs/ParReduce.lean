@@ -32,7 +32,7 @@ def parExample (f g : FuncIdx) : Func := func (
   )
 
 theorem parExampleWF : [⟨0, 1⟩, ⟨0, 1⟩] ⊢ (parExample 0 1) WF-func :=
-  by trivial
+  by decide
 
 def reduceExample (f c reduce : FuncIdx) : Func := func (
     block start(z,a,i,j) {GOTO guard(z,i,j,a)},
@@ -53,6 +53,6 @@ def reduceExample (f c reduce : FuncIdx) : Func := func (
     block right(z,m,j) {CALL reduce(z,z,m,j) ⊳ goto exit()}
   )
 
+-- set_option maxRecDepth 10000
 theorem reduceExampleWF : [⟨1, 1⟩, ⟨2, 1⟩, ⟨4, 1⟩] ⊢ (reduceExample 0 1 2) WF-func :=
-  by trivial
-
+  by simp[reduceExample, Nat.repeat]; decide

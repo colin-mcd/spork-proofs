@@ -296,10 +296,10 @@ namespace StackFrame
   end WF
 
   @[simp] def ret {P K get} (k : StackFrame) (kwf : P; K; get ⊢ k WF-frame) : Nat :=
-    ((P[k.f]'kwf.flt).B[k.b]'kwf.blt).r
+    ((P[k.f]'kwf.flt).B[k.b]'kwf.blt).r.n
 
   @[simp] def ret! (P : Program) (k : StackFrame) : Nat :=
-    P[k.f]!.B[k.b]!.r
+    P[k.f]!.B[k.b]!.r.n
 
   @[simp] def code {P K get} (k : StackFrame) (kwf : P; K; get ⊢ k WF-frame) : Code :=
     ((P[k.f]'kwf.flt)[k.b]'kwf.blt').code
@@ -405,19 +405,19 @@ namespace CallStack
       head' Kwf.nonnil Kwf
   end WF
 
-  @[simp] def retjoin?! (P : Program) : (K : CallStack) -> Option Nat
+  @[simp] def exitsig?! (P : Program) : (K : CallStack) -> Option Nat
     | .nil => none
     | .nil ⬝ k => some (k.ret! P)
-    | K ⬝ _k => K.retjoin?! P
+    | K ⬝ _k => K.exitsig?! P
   
-  theorem retjoin_eq_retjoin?! {P get} : {K : CallStack} -> (wf : P; get ⊢ K WF-stack) ->
-          (if K = .nil then none else some (K.retjoin P)) = K.retjoin?! P
+  theorem exitsig_eq_exitsig?! {P get} : {K : CallStack} -> (wf : P; get ⊢ K WF-stack) ->
+          (if K = .nil then none else some (K.exitsig P)) = K.exitsig?! P
     | .nil, _wf =>
       rfl
     | .nil ⬝ k, (_ ⬝wf kwf) => by
-      simp only [reduceCtorEq, if_false, retjoin?!, retjoin, StackFrame.ret!]
+      simp only [reduceCtorEq, if_false, exitsig?!, exitsig, StackFrame.ret!]
     | K ⬝ k ⬝ _k', wf =>
-      retjoin_eq_retjoin?! (K := K ⬝ k) wf.tail
+      exitsig_eq_exitsig?! (K := K ⬝ k) wf.tail
 
   @[simp] def bsig! (P : Program) (K : CallStack) : BlockSig :=
     K.head!.bsig! P
@@ -431,11 +431,11 @@ namespace CallStack
 
   namespace WF
     theorem append {P} : {K K' : CallStack} -> {get : Option Nat} ->
-                   P; (some (K'.retjoin P)) ⊢ K WF-stack -> P; get ⊢ K' WF-stack ->
+                   P; (some (K'.exitsig P)) ⊢ K WF-stack -> P; get ⊢ K' WF-stack ->
                    K' ≠ .nil -> K.allPromoted -> P; get ⊢ (K ++ K') WF-stack
       | K, .nil ⬝ k, get, Kwf, K'wf@(.nil ⬝wf kwf), _knn, kprom =>
         by simp; exact
-          (Option.some_inj.mp (retjoin_eq_retjoin?! K'wf) ▸ Kwf) ⬝wf
+          (Option.some_inj.mp (exitsig_eq_exitsig?! K'wf) ▸ Kwf) ⬝wf
           (kwf.changeStack (λ _ => kprom))
       | K, K' ⬝ k' ⬝ k, get, Kwf, K'wf ⬝wf kwf, p, kprom =>
         (append Kwf K'wf (λ x => by contradiction) kprom) ⬝wf
@@ -443,7 +443,7 @@ namespace CallStack
 
     theorem unappend {P} : {get : Option Nat} -> {K K' : CallStack} ->
                      P; get ⊢ (K ++ K') WF-stack -> (K' ≠ .nil) -> K.allPromoted ->
-                     P; (some (K'.retjoin P)) ⊢ K WF-stack ∧ P; get ⊢ K' WF-stack
+                     P; (some (K'.exitsig P)) ⊢ K WF-stack ∧ P; get ⊢ K' WF-stack
       | get, K, .nil ⬝ k, wf, _, kprom =>
         let wf' : P; get ⊢ (K ⬝ k) WF-stack :=
           by rw[@append_cons K .nil k] at wf; exact wf
@@ -451,8 +451,8 @@ namespace CallStack
           wf'.head -- ⟨wf'.head.flt, wf'.head.blt, wf'.head.bsig, wf'.head.ρwf⟩
           --⟨wf'.head.flt, kprom ▸ wf'.head.ρwf, wf'.head.cwf⟩
         let nil_k_wf := .nil ⬝wf (k_wf.changeStack (K' := .nil) (λ _ => rfl))
-        let rr : some ((.nil ⬝ k).retjoin P) = (.nil ⬝ k).retjoin?! P :=
-          retjoin_eq_retjoin?! nil_k_wf
+        let rr : some ((.nil ⬝ k).exitsig P) = (.nil ⬝ k).exitsig?! P :=
+          exitsig_eq_exitsig?! nil_k_wf
         ⟨rr ▸ wf'.tail, nil_k_wf⟩
       | get, K, (K' ⬝ k') ⬝ k, wf, _, kprom =>
         let ⟨Kwf, K'wf⟩ := unappend wf.tail (by simp) kprom
@@ -464,33 +464,33 @@ namespace CallStack
         ⟨Kwf, K'wf ⬝wf k'wf⟩
         
 
-      @[simp] def peeph_retjoin? (P : Program) : CallStack -> Option Nat
-          | .nil => none
-          | .nil ⬝ k => some P[k.f]!.B[k.b]!.r
-          | K ⬝ _k => peeph_retjoin? P K
-      @[simp] theorem peeph_retjoin?_eq {P : Program} {K : CallStack} : (peeph_retjoin? P K).getD 0 = K.retjoin P :=
-        by induction K
+    @[simp] def peeph_exitsig? (P : Program) : CallStack -> Option Nat
+      | .nil => none
+      | .nil ⬝ k => some P[k.f]!.B[k.b]!.r.n
+      | K ⬝ _k => peeph_exitsig? P K
+    @[simp] theorem peeph_exitsig?_eq {P : Program} {K : CallStack} : (peeph_exitsig? P K).getD 0 = K.exitsig P :=
+      by induction K
+         · case nil => rfl
+         · case cons K k ih =>
+           cases K
            · case nil => rfl
-           · case cons K k ih =>
-             cases K
-             · case nil => rfl
-             · case cons K k' => simpa using ih
-      @[simp] theorem peeph_cons_isSome {P K k} : (peeph_retjoin? P (K ⬝ k)).isSome = true :=
-        by induction K generalizing k
-           · case nil => rfl
-           · case cons K' k' ih => exact ih
+           · case cons K k' => simpa using ih
+    @[simp] theorem peeph_cons_isSome {P K k} : (peeph_exitsig? P (K ⬝ k)).isSome = true :=
+      by induction K generalizing k
+         · case nil => rfl
+         · case cons K' k' ih => exact ih
 
     theorem peep {P K k K'} (wf : P ⊢ (K ⬝ k ++ K') WF-stack) :
-                 P; K; (K'.retjoin P) ⊢ k WF-frame := by
+                 P; K; (K'.exitsig P) ⊢ k WF-frame := by
       rw[← append_one, append_assoc] at wf
       let rec h : (K' : CallStack) -> (get : Option Nat) ->
                   P; get ⊢ (K ++ ({k} ++ K')) WF-stack ->
-                  P; K; (((peeph_retjoin? P K') <|> get).getD 0) ⊢ k WF-frame
+                  P; K; (((peeph_exitsig? P K') <|> get).getD 0) ⊢ k WF-frame
         | .nil, a, wf => wf.head
         | .nil ⬝ k'', get, wf => by simpa using wf.tail.head
         | K'' ⬝ k'' ⬝ k''', get, wf =>
           let hk := h (K'' ⬝ k'') (some (StackFrame.ret! P k''')) (wf.tail)
-          by rw[peeph_retjoin?,
+          by rw[peeph_exitsig?,
                 Option.orElse_eq_orElse,
                 ← Option.or_eq_orElse,
                 Option.or_of_isSome peeph_cons_isSome]
@@ -635,7 +635,7 @@ namespace ThreadTree
     | node {Rp Rc} :
           (Rpwf : Rp.WF P) ->
           (Rcwf : Rc.WF P) ->
-          ((Rp.promsig P).head? = some (Rc.retjoin P)) ->
+          ((Rp.promsig P).head? = some (Rc.exitsig P)) ->
           (Rc.prom = []) ->
           (Rp ⋏ Rc).WF P
 
@@ -649,7 +649,7 @@ namespace ThreadTree
     theorem parent {P Rp Rc} : (Rp ⋏ Rc).WF P -> Rp.WF P
       | node Rpwf _Rcwf _Rprom _Rcprom => Rpwf
     theorem parent_prom {P Rp Rc} : (Rp ⋏ Rc).WF P ->
-                                 (Rp.promsig P).head? = some (Rc.retjoin P)
+                                 (Rp.promsig P).head? = some (Rc.exitsig P)
       | node _Rpwf _Rcwf Rpprom _Rcprom => Rpprom
     theorem child_prom {P Rp Rc} : (Rp ⋏ Rc).WF P -> Rc.prom = []
       | node _Rpwf _Rcwf _Rpprom Rcprom => Rcprom
@@ -662,7 +662,7 @@ namespace ThreadTree
         let _ : Decidable (Rc.WF P) := instDecidable Rc
         decidable_of_iff (Rp.WF P ∧
                           Rc.WF P ∧
-                          (Rp.promsig P).head? = some (Rc.retjoin P) ∧
+                          (Rp.promsig P).head? = some (Rc.exitsig P) ∧
                           Rc.prom = [])
           ⟨λ ⟨Rwf, Rcwf, Rp, Rcp⟩ => node Rwf Rcwf Rp Rcp,
            λ | node Rwf Rcwf Rp Rcp => ⟨Rwf, Rcwf, Rp, Rcp⟩⟩

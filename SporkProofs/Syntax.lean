@@ -49,9 +49,14 @@ inductive Code where
 --   | spoin (σ : Oblg) (n : Nat)
 --   | join (σ : Oblg) (n : Nat)
 
+inductive ResultSig where
+  | retn (r : Nat)
+  | exit (e : Nat)
+deriving Repr, DecidableEq
+
 -- block with a local scope Γ which must return r values and obligated to spoin σ
 inductive BlockSig where
-  | mk (Γ : Nat) (r : Nat) (σ : List Nat)
+  | mk (Γ : Nat) (r : ResultSig) (σ : List Nat)
 
 inductive Block where
   | mk (bsig : BlockSig) (code : Code)
@@ -179,6 +184,58 @@ end Oblg
 
 --run_cmd mk_simp_attr `simp_name
 
+namespace ResultSig
+  def n
+    | retn n => n
+    | exit n => n
+
+  universe u
+  def elimD {α : ResultSig -> Type u} (r : (n : Nat) -> α (retn n)) (e : (n : Nat) -> α (exit n)) : (r : ResultSig) -> α r
+    | retn n => r n
+    | exit n => e n
+  def elim {α : Type u} (r : Nat -> α) (e : Nat -> α) : ResultSig -> α
+    | retn n => r n
+    | exit n => e n
+
+  @[simp] def isRetn
+    | retn _n => true
+    | exit _n => false
+  @[simp] def isExit
+    | retn _n => false
+    | exit _n => true
+
+  @[simp] theorem isRetn_neq_isExit {r} : isRetn r ≠ isExit r :=
+    by cases r <;> simp
+
+  def getRetn : (r : ResultSig) -> r.isRetn -> Nat
+    | .retn n, _ => n
+
+  def getExit : (r : ResultSig) -> r.isExit -> Nat
+    | .exit n, _ => n
+
+  theorem isRetn_eq : {r : ResultSig} -> r.isRetn -> r = .retn r.n
+    | .retn _n, _ => rfl
+  theorem isExit_eq : {r : ResultSig} -> r.isExit -> r = .exit r.n
+    | .exit _n, _ => rfl
+  theorem not_isRetn_isExit : {r : ResultSig} -> ¬ r.isRetn -> r.isExit
+    |.exit _n, _nr => rfl
+  theorem not_isExit_isRetn : {r : ResultSig} -> ¬ r.isExit -> r.isRetn
+    |.retn _n, _ne => rfl
+  
+  @[simp, getters] theorem get_retn_n {n} : (retn n).n = n := rfl
+  @[simp, getters] theorem get_exit_n {n} : (exit n).n = n := rfl
+  @[simp, getters] theorem get_getRetn_n {n} : (retn n).getRetn rfl = n := rfl
+  @[simp, getters] theorem get_getExit_n {n} : (exit n).getExit rfl = n := rfl
+  @[simp, getters] theorem get_isRetn {n} : (retn n).isRetn = true := rfl
+  @[simp, getters] theorem get_isExit {n} : (exit n).isExit = true := rfl
+  @[simp, getters] theorem get_elim_r {α n} {r e : Nat -> α} : (retn n).elim r e = r n := rfl
+  @[simp, getters] theorem get_elim_e {α n} {r e : Nat -> α} : (exit n).elim r e = e n := rfl
+  @[simp, getters] theorem get_elim_fix {r} : elim retn exit r = r := by cases r <;> simp
+  
+  instance : Inhabited ResultSig where
+    default := retn 0
+end ResultSig
+
 namespace BlockSig
   def Γ | mk Γ _r _σ => Γ
   def r | mk _Γ r _σ => r
@@ -187,7 +244,7 @@ namespace BlockSig
   def binds | mk Γ r σ, Γ' => mk (Γ + Γ') r σ
   def spork | mk Γ r σ, s => mk Γ r (s :: σ)
   def spoin | mk Γ r σ => mk Γ r σ.tail
-  def spwn | mk Γ _r _σ, n => mk Γ n []
+  def spwn | mk Γ _r _σ, n => mk Γ (.exit n) []
 
   @[simp, getters] theorem get_fix {b} : mk b.Γ b.r b.σ = b := rfl
   @[simp, getters] theorem get_1 {b : BlockSig} : b.1 = b.Γ := rfl
@@ -200,25 +257,9 @@ namespace BlockSig
   @[simp, getters] theorem get_binds {Γ r σ Γ'} : (mk Γ r σ).binds Γ' = mk (Γ + Γ') r σ := rfl
   @[simp, getters] theorem get_spork {Γ r σ s} : (mk Γ r σ).spork s = mk Γ r (s :: σ) := rfl
   @[simp, getters] theorem get_spoin {Γ r σ} : (mk Γ r σ).spoin = mk Γ r σ.tail := rfl
-  @[simp, getters] theorem get_spwn {Γ r σ n} : (mk Γ r σ).spwn n = mk Γ n [] := rfl
+  @[simp, getters] theorem get_spwn {Γ r σ n} : (mk Γ r σ).spwn n = mk Γ (.exit n) [] := rfl
 
-  deriving instance Repr, DecidableEq for BlockSig
-  instance : Inhabited BlockSig := ⟨0, 1, []⟩
-
-  -- @[simp] def add (a b : BlockSig) :=
-  --   mk (a.arity + b.arity) (a.sporkNest ++ b.sporkNest)
-
-  -- instance : Add BlockSig where
-  --   add := add
-
-  -- @[simp] theorem add_arity (a b : BlockSig) : (a + b).arity = a.arity + b.arity :=
-  --   by simp
-  -- @[simp] theorem add_sporkNest (a b : BlockSig) : (a + b).sporkNest = a.sporkNest ++ b.sporkNest :=
-  --   by simp
-  -- @[simp] theorem add_unfolded (a a' sn sn') : (mk a sn) + (mk a' sn') = mk (a + a') (sn ++ sn') :=
-  --   rfl
-  -- @[simp] theorem add_zero : (a : BlockSig) -> (a + .mk 0 []) = a
-  --   | .mk arity sn => by simp
+  deriving instance Repr, DecidableEq, Inhabited for BlockSig
 end BlockSig
 
 namespace FuncSig
@@ -280,10 +321,17 @@ namespace Cont
   @[simp, getters] theorem get_2 {c : Cont} : c.2 = c.args := rfl
   @[simp, getters] theorem get_b {b args} : (mk b args).b = b := rfl
   @[simp, getters] theorem get_args {b args} : (mk b args).args = args := rfl
+
+  def offset_B (B : Nat) (c : Cont) := mk (c.b + B) c.args
+  
+  @[simp, getters] theorem offset_B_b {B c} : (offset_B B c).b = c.b + B := rfl
+  @[simp, getters] theorem offset_B_args {B c} : (offset_B B c).args = c.args := rfl
 end Cont
 
 namespace Code
   deriving instance Repr, DecidableEq for Code
+  instance : Inhabited Code where
+    default := retn []
 
   @[simp] def split : Code -> List Expr × (c : Code) ×' (∀ e, ∀ c', c ≠ .stmt e c')
     | stmt e c => let (es, cp) := c.split
@@ -305,13 +353,19 @@ namespace Code
     cases c <;> try (cases e <;> simp_all)
     · case stmt e' es' e'' es'' =>
       exact merge_split (Prod.ext q.1.2 q.2)
+
+  def offset_B (B : Nat) : Code -> Code
+    | stmt e c => stmt e (c.offset_B B)
+    | goto bnext => goto (bnext.offset_B B)
+    | ite cond bthen belse => ite cond (bthen.offset_B B) (belse.offset_B B)
+    | call g args bret => call g args (bret.offset_B B)
+    | retn args => retn args
+    | spork bbody bspwn => spork (bbody.offset_B B) (bspwn.offset_B B)
+    | spoin bunpr bprom => spoin (bunpr.offset_B B) (bprom.offset_B B)
 end Code
 
 namespace Block
-  deriving instance Repr, DecidableEq for Block
-
-  instance : Inhabited Block where
-    default := mk ⟨0, 0, []⟩ (.retn [])
+  deriving instance Repr, DecidableEq, Inhabited for Block
 
   def bsig | mk bsig _code => bsig
   def code | mk _bsig code => code
@@ -321,6 +375,8 @@ namespace Block
   @[simp, getters] theorem get_2 {b : Block} : b.2 = b.code := rfl
   @[simp, getters] theorem get_bsig {bsig c} : (mk bsig c).bsig = bsig := rfl
   @[simp, getters] theorem get_code {bsig c} : (mk bsig c).code = c := rfl
+
+  @[simp] def offset_B (B : Nat) (b : Block) := mk b.bsig (b.code.offset_B B)
 end Block
 
 
@@ -343,6 +399,8 @@ namespace Func
 
   @[simp] theorem size_eq_B_length (f : Func) : f.B.length = f.size :=
     by simp
+
+  @[simp] def offset_B (B : Nat) (f : Func) := mk f.fsig (f.blocks.map (Block.offset_B B))
 
   deriving instance Repr, DecidableEq for Func
 
