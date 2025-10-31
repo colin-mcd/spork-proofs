@@ -49,6 +49,14 @@ namespace IVec
     | [] => nil
     | a :: as => cons (p a) (from_map_list p (l := as))
 
+  theorem from_mapIdx {α α' : Type} {β : α -> Sort} {β' : α' -> Sort} : {l : List α} -> (f : (i : Nat) -> α -> α') -> (g : (i : Nat) -> (ilt : i < l.length) -> (a : α) -> (a = l[i]) -> (b : β a) -> β' (f i a)) -> (v : IVec β l) -> IVec β' (l.mapIdx f)
+    | [], _f, _g, _v => nil
+    | a :: as, f, g, cons va vas =>
+      List.mapIdx_cons ▸
+      cons (g 0 as.length.zero_lt_succ a rfl va)
+           (vas.from_mapIdx (λ i => f i.succ)
+             (λ i ilt a aeq => g i.succ (by simp; exact ilt) a (by simp; exact aeq)))
+
   theorem from_mapIdx' {α α' : Type} {β : α -> Sort} {β' : α' -> Sort} : {l : List α} -> (f : α -> α') -> (g : (i : Nat) -> (ilt : i < l.length) -> (a : α) -> (a = l[i]) -> (b : β a) -> β' (f a)) -> (v : IVec β l) -> IVec β' (l.map f)
     | [], _f, _g, _v => nil
     | a :: as, f, g, cons va vas =>

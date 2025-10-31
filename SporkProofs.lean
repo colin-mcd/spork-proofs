@@ -12,3 +12,4 @@ import SporkProofs.ParReduce
 import SporkProofs.Preservation
 import SporkProofs.Progress
 import SporkProofs.Soundness
+import SporkProofs.Inline

@@ -1,12 +1,47 @@
---import SporkProofs.IVec
 import SporkProofs.Syntax
 import SporkProofs.WFSyntax
 open Lean Elab Macro
 
+/-!
+DSL notation for Spork IR, allowing nice syntax for constructing programs.
+After parsing a program, it runs a very basic "type inference" which infers
+the signatures of functions and basic blocks.
+
+Example (for `f g : FuncIdx`):
+```
+func (
+  block start():
+    SPORK (goto body(), goto spwn())
+  block body():
+    CALL f() ⊳ goto cont()
+  block cont(a):
+    SPOIN (goto unpr(a), goto prom(a))
+  block unpr(a):
+    CALL g() ⊳ goto ret(a)
+  block prom(r₁, r₂):
+    GOTO ret(r₁,r₂)
+  block ret(a, b):
+    RETURN(a,b)
+  block spwn():
+    CALL g() ⊳ goto exit()
+  block exit(b):
+    RETURN(b)
+)
+```
+-/
+
+/--
+Raw, unannotated block (signature to be inferred later).
+Stores the name string for better error messages.
+-/
 inductive UnannotatedBlock where
   | mk (name: String) (args : Scope) (c : Code)
   deriving Inhabited
 
+/--
+Runs "type inference" on a list of unannotated blocks,
+returning a Func with a FuncSig and Blocks with their BlockSigs
+-/
 @[simp] abbrev mkfunc (fname : String) : List UnannotatedBlock -> Func
   | bs => let bs' := infer_bsigs bs
           Func.mk (getfsig bs') bs'
@@ -78,21 +113,6 @@ inductive UnannotatedBlock where
       let xs := Nat.repeat (infer_bsigs_h rsigs) ubs.length (ubs.map Sum.inl)
       xs.map (·.elim (λ ub => panic ("failed to infer signature for block " ++ ub.1 ++ " in function " ++ fname)) (·))
 
--- def makeprogram (F : List Func) : Program :=
---   Program.mk F
-
--- def makeprogram (F : List Func) : Program :=
---   let P := Program.mk F
---   if P WF-program then
---     P
---   else
---     let _ : Inhabited Program := ⟨P⟩
---     let _ : List String :=
---       P.funs.zipIdx.filter (¬ P ⊢ ·.1 WF-func) |>
---       .map (λ (f, i) => let bs : List (Block × Nat) := f.blocks.zipIdx.filter (¬ P; f.B ⊢ ·.1 WF-block)
---                         sorry)
---     panic "ill-formed program"
-
 declare_syntax_cat ssa_atom
 declare_syntax_cat ssa_unaop
 declare_syntax_cat ssa_binop
@@ -139,16 +159,16 @@ syntax term : stmtget
 syntax ident " ← " ssa_expr "," stmtget : stmtget
 syntax (name := countIdents) "countIdents " ident* : term
 syntax (name := blockletssyntax) "blocklets " ident* " from " num " in " term : term
-syntax "block " ident "(" ident,* ")" "{" stmtget "}" : BB
-syntax "block " "(" ident,* ")" "{" stmtget "}" : term
-syntax "func " ident "(" BB,* ")" : PF
-syntax "func " "(" BB,* ")" : term
+syntax "block " ident "(" ident,* ")" ": " stmtget : BB
+syntax "block " "(" ident,* ")" ": " stmtget : term
+syntax "func " ident "(" BB* ")" : PF
+syntax "func " "(" BB* ")" : term
 syntax "parseblocks" BB* : term
 syntax "parsefuncs" PF*: term
 syntax "PROGRAM" "(" PF,* ")" : term
 
 def bbToIdent : Lean.TSyntax `BB → Lean.TSyntax `ident
-  | `(BB| block $x:ident ($_args,*) {$_cs}) => x
+  | `(BB| block $x:ident ($_args,*): $_cs) => x
 --  | `(BB| block $x:ident ($_args,*) sporks ($_ss) {$_cs}) => x
   | _ => panic "unknown syntax for basic block"
 
@@ -157,11 +177,11 @@ def identToStr : Lean.TSyntax `ident → Lean.TSyntax `term
   | _ => panic "expected identifier in identToStr"
 
 def bbToStr : Lean.TSyntax `BB → Lean.TSyntax `term
-  | `(BB| block $x:ident ($_args,*) {$_cs}) => identToStr x -- Lean.Syntax.mkStrLit ((Lean.TSyntax.getId x).toString)
+  | `(BB| block $x:ident ($_args,*): $_cs) => identToStr x -- Lean.Syntax.mkStrLit ((Lean.TSyntax.getId x).toString)
   | _ => panic "unknown syntax for basic block"
 
 def pfToIdent : Lean.TSyntax `PF → Lean.TSyntax `ident
-  | `(PF| func $x:ident ($_bb,*)) => x
+  | `(PF| func $x:ident ($_bb*)) => x
   | _ => panic "unknown syntax for function"
 
 def elabSSAAtom : Lean.Macro
@@ -239,16 +259,15 @@ macro_rules
       `(let $x := $i
         blocklets $xs* from $(Lean.Syntax.mkNatLit i.getNat.succ) in $t)
 
---  | `(PF|func $x:ident ($bbs,*)) => `(mkfunc $(identToStr x) (blocklets $(bbs.getElems.map bbToIdent)* from 0 in parseblocks $bbs*))
-  | `(func ($bbs,*)) => `(mkfunc "_" (blocklets $(bbs.getElems.map bbToIdent)* from 0 in parseblocks $bbs*))
+  | `(func ($bbs*)) => `(mkfunc "_" (blocklets $(bbs.map bbToIdent)* from 0 in parseblocks $bbs*))
   | `(parsefuncs) => `([])
-  | `(parsefuncs func $x:ident ($bbs,*) $pfs:PF*) =>
-    `(mkfunc $(identToStr x) (blocklets $(bbs.getElems.map bbToIdent)* from 0 in parseblocks $bbs*) :: parsefuncs $pfs*)
+  | `(parsefuncs func $x:ident ($bbs*) $pfs:PF*) =>
+    `(mkfunc $(identToStr x) (blocklets $(bbs.map bbToIdent)* from 0 in parseblocks $bbs*) :: parsefuncs $pfs*)
   | `(PROGRAM ($pfs,*)) =>
     `(Program.mk (blocklets $(pfs.getElems.map pfToIdent)* from 0 in parsefuncs $pfs*))
 
   | `(parseblocks) => `([])
-  | `(parseblocks block $x:ident ($args:ident,*) {$cs:stmtget} $bbs:BB*) =>
+  | `(parseblocks block $x:ident ($args:ident,*): $cs:stmtget $bbs:BB*) =>
       `(UnannotatedBlock.mk $(identToStr x) $(Lean.Syntax.mkNatLit args.getElems.size) (blocklets $args* from 0 in stmts 0 {$cs}) :: parseblocks $bbs*)
-  | `(block ($args:ident,*) {$cs:stmtget}) =>
+  | `(block ($args:ident,*) : $cs:stmtget) =>
       `(UnannotatedBlock.mk "_" $(Lean.Syntax.mkNatLit args.getElems.size) (blocklets $args* from 0 in stmts 0 {$cs}))
