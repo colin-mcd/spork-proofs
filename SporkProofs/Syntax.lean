@@ -39,15 +39,6 @@ inductive Code where
   | retn (args : List Var)
   | spork (bbody : Cont) (bspwn : Cont)
   | spoin (bunpr : Cont) (bprom : Cont)
-  -- | join (bsync : Cont)
-  -- | exit (args : List Var)
-
--- Obligation to return, exit, spoin, or join
--- inductive Oblg where
---   | retn (n : Nat)
---   | exit (n : Nat)
---   | spoin (σ : Oblg) (n : Nat)
---   | join (σ : Oblg) (n : Nat)
 
 inductive ResultSig where
   | retn (r : Nat)
@@ -56,7 +47,7 @@ deriving Repr, DecidableEq
 
 -- block with a local scope Γ which must return r values and obligated to spoin σ
 inductive BlockSig where
-  | mk (Γ : Nat) (r : ResultSig) (σ : List Nat)
+  | mk (Γ : Scope) (r : ResultSig) (σ : List Nat)
 
 inductive Block where
   | mk (bsig : BlockSig) (code : Code)
@@ -73,116 +64,6 @@ inductive Program where
 
 abbrev FuncSigs := List FuncSig
 abbrev BlockSigs := List BlockSig
-
-/-
-namespace Oblg
---  @[simp] abbrev spoin
-  deriving instance DecidableEq for Oblg
-
-  inductive isRetn : Oblg -> Prop where
-    | mk (n : Nat) : (retn n).isRetn
-  inductive isExit : Oblg -> Prop where
-    | mk (n : Nat) : (exit n).isExit
-  inductive isSpoin : Oblg -> Prop where
-    | mk (σ : Oblg) (n : Nat) : (σ.spoin n).isSpoin
-  inductive isJoin : Oblg -> Prop where
-    | mk (σ : Oblg) (n : Nat) : (σ.join n).isJoin
-  -- inductive isRetnN : Oblg -> Nat -> Prop where
-  --   | mk (n : Nat) : (retn n).isRetnN n
-  -- inductive isExitN : Oblg -> Nat -> Prop where
-  --   | mk (n : Nat) : (exit n).isExitN n
-
-  instance : {σ : Oblg} -> Decidable σ.isRetn := by
-    intro σ; cases σ <;> try exact .isFalse (by intro; contradiction)
-    · case retn n => exact .isTrue (.mk n)
-  instance : {σ : Oblg} -> Decidable σ.isExit := by
-    intro σ; cases σ <;> try exact .isFalse (by intro; contradiction)
-    · case exit n => exact .isTrue (.mk n)
-  instance : {σ : Oblg} -> Decidable σ.isSpoin := by
-    intro σ; cases σ <;> try exact .isFalse (by intro; contradiction)
-    · case spoin σ n => exact .isTrue (.mk σ n)
-  instance : {σ : Oblg} -> Decidable σ.isJoin := by
-    intro σ; cases σ <;> try exact .isFalse (by intro; contradiction)
-    · case join σ n => exact .isTrue (.mk σ n)
-  -- instance : {σ : Oblg} -> {n : Nat} -> Decidable (σ.isRetnN n) := by
-  --   intro σ n; cases σ <;> try exact .isFalse (by intro; contradiction)
-  --   · case retn n' => exact decidable_of_iff (n = n')
-  --                       ⟨λ h => by rw[h]; exact .mk n', λ | .mk n'' => rfl⟩
-  -- instance : {σ : Oblg} -> {n : Nat} -> Decidable (σ.isExitN n) := by
-  --   intro σ n; cases σ <;> try exact .isFalse (by intro; contradiction)
-  --   · case exit n' => exact decidable_of_iff (n = n')
-  --                       ⟨λ h => by rw[h]; exact .mk n', λ | .mk n'' => rfl⟩
-
-  @[simp] abbrev getRetn : (σ : Oblg) -> σ.isRetn -> Nat
-    | retn n, _ => n
-  @[simp] abbrev getExit : (σ : Oblg) -> σ.isExit -> Nat
-    | exit n, _ => n
-  @[simp] abbrev getSpoin : (σ : Oblg) -> σ.isSpoin -> Oblg × Nat
-    | spoin σ n, _ => ⟨σ, n⟩
-  @[simp] abbrev getJoin : (σ : Oblg) -> σ.isJoin -> Oblg × Nat
-    | join σ n, _ => ⟨σ, n⟩
-
-  @[simp] abbrev head : Oblg -> Nat
-    | retn n => n
-    | exit n => n
-    | spoin _σ n => n
-    | join _σ n => n
-  @[simp] abbrev tail : Oblg -> Oblg
-    | retn n => retn n
-    | exit n => exit n
-    | spoin σ _n => σ
-    | join σ _n => σ
-  @[simp] abbrev last : Oblg -> Nat
-    | retn n => n
-    | exit n => n
-    | spoin σ _n => σ.last
-    | join σ _n => σ.last
-  @[simp] abbrev sig : Oblg -> List Nat
-    | retn _n => []
-    | exit _n => []
-    | spoin σ n => n :: σ.sig
-    | join σ n => n :: σ.sig
-
-
-  inductive RetnExit | Retn | Exit
-  inductive SpoinJoin | Spoin | Join
-  deriving instance DecidableEq for RetnExit
-  deriving instance DecidableEq for SpoinJoin
-
-  abbrev POblg : Type := (RetnExit × Nat) × List (SpoinJoin × Nat)
-  def POblg_Oblg : POblg -> Oblg
-    | ((.Retn, n), []) => .retn n
-    | ((.Exit, n), []) => .exit n
-    | (ren, (.Spoin, n) :: ρ) => (POblg_Oblg (ren, ρ)).spoin n
-    | (ren, (.Join, n) :: ρ) => (POblg_Oblg (ren, ρ)).join n
-  @[simp] theorem POblg_Oblg_Retn (n : Nat) : POblg_Oblg ((.Retn, n), []) = .retn n := by simp[POblg_Oblg]
-  @[simp] theorem POblg_Oblg_Exit (n : Nat) : POblg_Oblg ((.Exit, n), []) = .exit n := by simp[POblg_Oblg]
-  @[simp] theorem POblg_Oblg_Spoin (ren : RetnExit × Nat) (n : Nat) (ρ : List (SpoinJoin × Nat)) : POblg_Oblg (ren, (.Spoin, n) :: ρ) = (POblg_Oblg (ren, ρ)).spoin n := by simp[POblg_Oblg]
-  @[simp] theorem POblg_Oblg_Join (ren : RetnExit × Nat) (n : Nat) (ρ : List (SpoinJoin × Nat)) : POblg_Oblg (ren, (.Join, n) :: ρ) = (POblg_Oblg (ren, ρ)).join n := by simp[POblg_Oblg]
-
-  @[simp] abbrev Oblg_POblg : Oblg -> POblg
-    | .retn n => ((.Retn, n), [])
-    | .exit n => ((.Exit, n), [])
-    | .spoin σ n => let (ren, ρ) := Oblg_POblg σ
-                    (ren, (.Spoin, n) :: ρ)
-    | .join σ n => let (ren, ρ) := Oblg_POblg σ
-                   (ren, (.Join, n) :: ρ)
-
-  @[simp] theorem POblg_Oblg_POblg : (ρ : POblg) -> Oblg_POblg (POblg_Oblg ρ) = ρ
-    | ((.Retn, n), []) => by simp
-    | ((.Exit, n), []) => by simp
-    | (ren, (.Spoin, n) :: ρ) => by simp[POblg_Oblg_POblg (ren, ρ)]
-    | (ren, (.Join, n) :: ρ) => by simp[POblg_Oblg_POblg (ren, ρ)]
-
-  @[simp] theorem Oblg_POblg_Oblg : (σ : Oblg) -> POblg_Oblg (Oblg_POblg σ) = σ
-    | .retn n => by simp
-    | .exit n => by simp
-    | .spoin σ n => by simp[Oblg_POblg_Oblg σ]
-    | .join σ n => by simp[Oblg_POblg_Oblg σ]
-end Oblg
--/
-
---run_cmd mk_simp_attr `simp_name
 
 namespace ResultSig
   def n
@@ -342,8 +223,6 @@ namespace Code
     | retn args => ([], ⟨retn args, by intros e c; simp⟩)
     | spork bbody bspwn => ([], ⟨spork bbody bspwn, by intros e c; simp⟩)
     | spoin bunpr bprom => ([], ⟨spoin bunpr bprom, by intros e c; simp⟩)
-    -- | join bsync => ([], ⟨join bsync, by intros e c; simp⟩)
-    -- | exit args => ([], ⟨exit args, by intros e c; simp⟩)
 
   @[simp] def merge : List Expr -> Code -> Code
     | [], c => c
@@ -431,10 +310,3 @@ namespace Program
   instance : GetElem Program FuncIdx Func (λ P f => f < P.size) where
     getElem P f p := P.funs[f]
 end Program
-
--- namespace Cont
-  -- @[simp] abbrev code (P : Program) (f : FuncIdx) (b : Cont) : Code :=
-  --   P[f]![b.b]!.code
-  -- @[simp] abbrev spawn (P : Program) (f : FuncIdx) (bspwn : BlockIdx) : Cont :=
-  --   ⟨bspwn, (List.range P[f]!.B[bspwn]!.Γ).map Var.mk⟩
--- end Cont

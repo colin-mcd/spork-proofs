@@ -112,9 +112,6 @@ namespace Step
                                    simp at y; rw[List.length_map]; exact y)]
       exact congrArg (·.2) Rwf.parent.get.c.spoin_bprom.bsig.symm
 
-    -- · case promote f unpr g prom X K c K' u p =>
-    --     simp; rw[preserve_exitsig_stack_cons]
-
   theorem preserve_prom {P : Program} : {R R' : ThreadTree} ->
                          P ⊢ R ↦ R' -> P ⊢ R WF-tree -> R.prom = R'.prom
   | R, R', s => by

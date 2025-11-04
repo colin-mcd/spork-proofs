@@ -2,28 +2,6 @@ import SporkProofs.Syntax
 import SporkProofs.IVec
 import SporkProofs.HeadIs
 
--- class WFClause (T : Type) where
---   A : Type
---   wf : A -> T -> Prop
---   isWF {a t} : Decidable (wf a t)
-
--- instance {T : Type} [WFClause T] {a : WFClause.A T} {t : T} : Decidable (WFClause.WF a t) :=
---   WFClause.isWF
-
--- declare_syntax_cat antecedents
--- declare_syntax_cat succedent
--- syntax (term:arg)? : antecedents
--- syntax term:arg "; " antecedents : antecedents
--- syntax "parse_antecedents " antecedents : term
--- syntax term " WF" : succedent
--- syntax (name := WFsyntax) antecedents " ⊢ " succedent : term
-
--- macro_rules
---   | `(parse_antecedents ) => `(())
---   | `(parse_antecedents $t:term) => `($t)
---   | `(parse_antecedents $t:term; $rest:antecedents) => `(($t, parse_antecedents $rest))
---   | `($xs:antecedents ⊢ $t:term WF) => `(WFClause.WF (parse_antecedents $xs) ($t))
-
 namespace Var
   inductive WF (Γ : Scope) (v : Var) : Prop where
     | mk : v.idx < Γ -> v.WF Γ
@@ -92,12 +70,13 @@ namespace Expr
 end Expr
 
 namespace Cont
-  -- a continuation that takes `bsig.arity + rets` args
+  /-- a continuation that takes `b.args.length + rets` args -/
   inductive WFRets (B : BlockSigs) (bsig : BlockSig) (rets : Nat) (b : Cont) : Prop where
     | mk (_ : b.b < B.length)
          (_ : B[b.b] = ⟨b.args.length + rets, bsig.r, bsig.σ⟩)
          (_ : IVec (bsig.Γ ⊢ · WF-var) b.args)
 
+  /-- a continuation that takes `b.args.length` args -/
   inductive WF (B : BlockSigs) (bsig : BlockSig) (b : Cont) : Prop where
     | mk (_ : b.b < B.length)
          (_ : B[b.b] = ⟨b.args.length, bsig.r, bsig.σ⟩)
@@ -141,13 +120,7 @@ namespace Cont
                       (B ++ B'); bsig ⊢ b(ret) WF-cont
       | mk blt bsigb args =>
         mk (List.length_append ▸ Nat.lt_add_right B'.length blt)
-           (-- getElem!_pos (B ++ B') b.b
-            --  (by rw[← Nat.add_zero b.b]
-            --      let x := Nat.add_le_add blt (Nat.zero_le B'.length)
-            --      simp at x
-            --      rw[List.length_append]
-            --      exact x) ▸
-            List.getElem_append_left' blt B' ▸
+           (List.getElem_append_left' blt B' ▸
             getElem!_pos B b.b blt ▸
             bsigb)
            args
@@ -198,26 +171,6 @@ namespace Cont
     theorem weaken_Γ {B Γ bsig b} (wf : B; bsig ⊢ b WF-cont) :
                      B; (bsig.binds Γ) ⊢ b WF-cont :=
       wf.cast0.weaken_Γ.cast0
-
-
-    -- theorem spawn {P f bspwn} (flt : f < P.size) (blt : bspwn < P[f].B.length) : P[f].B; P[f].B[bspwn] ⊢ (.spawn P f bspwn) WF-cont :=
-    --   let rec argswf' : (Γ : Scope) -> (n : Nat) ->
-    --                     IVec ((Γ + n) ⊢ · WF-var) ((List.range' n Γ).map Var.mk)
-    --     | 0, n => .nil
-    --     | Γ + 1, n => .cons ⟨by simp⟩ (Nat.add_assoc Γ 1 n ▸
-    --                                    Nat.add_comm 1 n ▸
-    --                                    argswf' Γ (n + 1))
-    --   let argswf (Γ : Scope) : IVec (Γ ⊢ · WF-var) ((List.range Γ).map Var.mk) :=
-    --     List.range_eq_range' ▸ argswf' Γ 0
-    --   let geeq : P[f]!.B[bspwn]! = P[f].B[bspwn] :=
-    --     getElem!_pos P[f].B bspwn blt ▸ getElem!_pos P f flt ▸ rfl
-    --   ⟨blt,
-    --    by simp only [Cont.b, Cont.args]
-    --       show BlockSig.mk P[f].B[bspwn].Γ P[f].B[bspwn].r P[f].B[bspwn].σ =
-    --            BlockSig.mk ((List.range P[f]!.B[bspwn]!.Γ).map Var.mk).length P[f].B[bspwn].r P[f].B[bspwn].σ
-    --       simp only [BlockSig.mk.injEq, and_self, and_true,
-    --                  List.length_map, List.length_range, geeq],
-    --    geeq ▸ argswf P[f]!.B[bspwn]!.Γ⟩
   end WF
 
   theorem WFRets0_iff_WF {B : BlockSigs} {bsig : BlockSig} {b : Cont} :
@@ -226,7 +179,6 @@ namespace Cont
 end Cont
 
 namespace Code
-  --notation e:arg " ;; " c => stmt e c
 
   inductive WF (P: List FuncSig) (B: BlockSigs) : BlockSig -> Code -> Prop where
     | stmt
@@ -289,20 +241,6 @@ namespace Code
         B; bsig.spoin ⊢ bunpr WF-cont ->
         B; bsig.spoin ⊢ bprom(bsig.σ.head σnn) WF-cont ->
         (spoin bunpr bprom).WF P B bsig
-    
-    -- | join
-    --     {bsig : BlockSig}
-    --     {bsync : Cont} :
-    --     bsig.σ.isJoin ->
-    --     bsync.WFRets B bsig.tail bsig.head ->
-    --     (join bsync).WF P B bsig
-    
-    -- | exit
-    --     {bsig : BlockSig}
-    --     {args : List Var}:
-    --     bsig.σ = .exit args.length ->
-    --     IVec (bsig.Γ ⊢ · WF-var) args ->
-    --     (exit args).WF P B bsig
 
   namespace WF
     
@@ -345,14 +283,6 @@ namespace Code
                             B; bsig.spoin ⊢ bunpr WF-cont ∧
                             B; bsig.spoin ⊢ bprom(bsig.σ.head σnn) WF-cont)
             ⟨λ ⟨a, b, c⟩ => spoin a b c, λ | spoin a b c => ⟨a, b, c⟩⟩
-      -- | .join bsync =>
-      --     decidable_of_iff (bsig.σ.isJoin ∧
-      --                       bsync.WFRets B bsig.tail bsig.head)
-      --       ⟨λ ⟨a, b⟩ => join a b, λ | join a b => ⟨a, b⟩⟩
-      -- | .exit args =>
-      --     decidable_of_iff (bsig.σ = .exit args.length ∧
-      --                       IVec (bsig.Γ ⊢ · WF-var) args)
-      --       ⟨λ ⟨a, b⟩ => exit a b, λ | exit a b => ⟨a, b⟩⟩
 
     -- Accessor methods
     theorem stmt_expr {P B bsig e c} : P; B; bsig ⊢ (.stmt e c) WF-code -> bsig.Γ ⊢ e WF-expr
@@ -606,9 +536,6 @@ namespace Blocks
 end Blocks
 
 namespace Func
-  -- inductive WF (P : Program) (f : Func) : Prop where
-  --   | mk (blocks : IVec (·.WF P (f.blocks.map (·.bsig))) f.blocks)
-  --        (head : HeadIs f.blocks (·.bsig) ⟨f.fsig.arity, .retn f.fsig.ret⟩)
   abbrev WF (P: List FuncSig) (f: Func): Prop :=
     P; ⟨f.fsig.arity, .retn f.fsig.ret, []⟩ ⊢ f.blocks WF-blocks
 

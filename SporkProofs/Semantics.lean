@@ -3,17 +3,14 @@ import SporkProofs.WFSyntax
 
 abbrev ValMap : Type := List Val
 
--- inductive StackFrameCode : Type
---   | code (b: BlockIdx) (c : Code)
---   | cont (b : Cont)
-
 inductive SpawnBlock : Type where
   | mk (b: BlockIdx) (args: List Val)
--- abbrev SpawnBlock: Type := Cont
 
+/--
+unpromoted sporks, oldest first (queue)
+promoted sporks, oldest last (stack)
+-/
 inductive SpawnDeque : Type where
-  -- unpromoted sporks, oldest first (queue)
-  -- promoted sporks, oldest last (stack)
   | mk (unpr : List SpawnBlock) (prom : List SpawnBlock)
 
 inductive StackFrame : Type
@@ -33,6 +30,8 @@ inductive ThreadTree : Type where
   | thread : Thread -> ThreadTree
   | node : ThreadTree -> ThreadTree -> ThreadTree
 
+
+
 @[simp] def valOf (p : Prop) [d : Decidable p] : Val := if decide p then 1 else 0
 
 namespace ValMap
@@ -45,14 +44,6 @@ namespace ValMap
   theorem getElem_length {X : ValMap} {args : List Var} (wf : IVec (X.length ⊢ · WF-var) args) : X[args].length = args.length :=
       by simp[instGetElemListVarValIVecWFLength,
               IVec.map_length (λ x xwf => X[x]) wf]
-
-  -- theorem getElem!_length (X : ValMap) (args : List Var) : X[args]!.length = args.length := by
-  --   simp[GetElem?.getElem!, decidableGetElem?]
-  --   exact
-  --   if x : decide (IVec (X.length ⊢ · WF-var) args) then
-  --     by simp at x; simp[x, getElem_length X args x]
-  --   else
-  --     by simp at x; simp[x]
 end ValMap
 
 namespace Atom
@@ -169,28 +160,6 @@ theorem codeOfGetElem {P : Program} {f : FuncIdx} {b : BlockIdx}
 theorem argsOfGetElem {x : List Var} {X : ValMap} (wf : IVec (X.length ⊢ · WF-var) x):
                     X[x]! = X[x] :=
   getElem!_pos X x wf
-
--- namespace StackFrameCode  
---   abbrev isCode | code _ _ => true | cont _ => false
---   abbrev isCont | code _ _ => false | cont _ => true
-
---   @[simp] def extractD : (c : StackFrameCode) -> if isCode c then BlockIdx × Code else Cont
---     | code b c => (b, c)
---     | cont b => b
---   abbrev extractCode : (c : StackFrameCode) -> isCode c -> BlockIdx × Code
---     | code b c, _ => (b, c)
---   abbrev extractCont : (c : StackFrameCode) -> isCont c -> Cont
---     | cont b, _ => b
-
---   @[simp] abbrev codeOfBlockIdx (P : Program) (f : FuncIdx) (b : BlockIdx) : StackFrameCode :=
---     code b P[f]![b]!.code
---   @[simp] abbrev codeOf (P : Program) (f : FuncIdx) (b : Cont) : StackFrameCode :=
---     code b.b P[f]![b.b]!.code
---   @[simp] abbrev codeEntry (P : Program) (f : FuncIdx) : StackFrameCode :=
---     code P[f]!.blocks.head!.code
-
---   deriving instance DecidableEq for StackFrameCode
--- end StackFrameCode
 
 namespace SpawnBlock
   def b | mk b _args => b
@@ -320,7 +289,6 @@ namespace CallStack
       List.append_assoc K.unpr K'.unpr k.ρ.unpr ▸
       @append_unpr K K' ▸
       rfl
-  --@[simp] theorem append_unpr_ : {K K' : CallStack} -> (K.append K').unpr = K.unpr ++ K'.unpr := append_unpr
   @[simp] theorem append_prom : {K K' : CallStack} -> (K ++ K').prom = K'.prom ++ K.prom
     | K, nil => by simp
     | K, K' ⬝ k => by simp; exact append_prom
@@ -530,22 +498,6 @@ inductive Step (P : Program) : (R R' : ThreadTree) -> Type where
              {⟨g, {}, Y, b'⟩} ⋄ .retn y}
            {K ⬝ ⟨f, ⟨[], ρ⟩, X[bprom.args]! ++ Y[y]!, bprom.b⟩ ⋄ P[f]![bprom.b]!.code}
 
-  -- | spoin_prom {f K π X bunpr bprom bspwn} :
-  --   K.unpr = [] ->
-  --   Step P {K ⬝ ⟨f, ⟨[], bspwn :: π⟩, X, .code (.spoin bunpr bprom)⟩}
-  --          {K ⬝ ⟨f, ⟨[], π⟩, X[bprom.args]!, .codeOf P f bprom⟩}
-
-  -- | sync {f K ρ X Y y bsync} :
-  --     Step P {K ⬝ ⟨f, ρ, X, .code (.join bsync)⟩,
-  --             {⟨f, {}, Y, .code (.exit y)⟩}}
-  --            {K ⬝ ⟨f, ρ, X ++ Y[y]!, .codeOf P f bsync⟩}
-
-  -- | spoin_prom {f K ρ X bunpr bprom Y y} {bspwn : SpawnBlock} :
-  --   K.unpr = [] ->
-  --   Step P {(K ⬝ ⟨f, ⟨[], bspwn :: ρ⟩, X, .code (.spoin bunpr bprom)⟩),
-  --            {⟨f, {}, Y, .code (.exit y)⟩}}
-  --           {K ⬝ ⟨f, ⟨[], ρ⟩, X[bprom.args]! ++ Y[y]!, .codeOf P f bprom⟩}
-
 inductive Steps (P : Program) : (R R' : ThreadTree) -> Type where
   | nil {R : ThreadTree} : Steps P R R
   | cons {R R' R'' : ThreadTree} : Steps P R R' -> Step P R' R'' -> Steps P R R''
@@ -594,14 +546,6 @@ namespace Steps
     | Rₛ, .(Rₛ), n, _c, nil => n
     | Rₛ, Rₑ, n, c, @Steps.cons .(P) .(Rₛ) R₁ₑ .(Rₑ) ss s =>
       byIndR (c R₁ₑ Rₑ s n) c ss
-
-  -- | congr_parent {Rp Rp' Rc} :
-  --   Step P Rp Rp' ->
-  --   Step P (Rp.node Rc) (Rp'.node Rc)
-
-  -- | congr_child {Rp Rc Rc'} :
-  --   Step P Rc Rc' ->
-  --   Step P (.node Rp Rc) (.node Rp Rc')
 
   def congr_parent {P} {Rp Rp' Rc : ThreadTree} :
                    P ⊢ Rp ↦* Rp' -> P ⊢ (Rp ⋏ Rc) ↦* (Rp' ⋏ Rc)

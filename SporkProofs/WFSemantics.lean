@@ -14,42 +14,6 @@ theorem argswf (Γ : Scope) : IVec (Γ ⊢ · WF-var) ((List.range Γ).map Var.m
                                    h Γ (n + 1))
   List.range_eq_range' ▸ h Γ 0
 
--- namespace StackFrameCode
---   inductive WF (fsigs B bsig ret) : StackFrameCode -> Prop
---     | code {c} : c.WF fsigs B bsig -> (code c).WF fsigs B bsig ret
---     | cont {b} : b.WFRets B bsig ret -> (cont b).WF fsigs B bsig ret
-
---   namespace WF
---     notation (name := notationwf) fsigs:arg "; " B:arg "; " bsig:arg "; " ret:arg " ⊢ " c:arg " WF-sfc" => WF fsigs B bsig ret c
-
---     instance {fsigs B bsig ret} : (c : StackFrameCode) ->
---              Decidable (fsigs; B; bsig; ret ⊢ c WF-sfc)
---       | .code c =>
---         decidable_of_iff (fsigs; B; bsig ⊢ c WF-code)
---           ⟨code, λ (code p) => p⟩
---       | .cont b =>
---         decidable_of_iff (B; bsig ⊢ b(ret) WF-cont)
---           ⟨cont, λ (cont p) => p⟩
-
---     theorem c {fsigs B bsig ret c} :
---              fsigs; B; bsig; ret ⊢ (.code c) WF-sfc ->
---              fsigs; B; bsig ⊢ c WF-code
---       | code c => c
-
---     theorem b {fsigs B bsig b ret} :
---              fsigs; B; bsig; ret ⊢ (.cont b) WF-sfc ->
---              B; bsig ⊢ b(ret) WF-cont
---       | cont b => b
---   end WF
--- end StackFrameCode
-
-/-
-  inductive WF (B : BlockSigs) (bsig : BlockSig) (b : Cont) : Prop where
-    | mk (_ : b.b < B.length)
-         (_ : B[b.b] = ⟨b.args.length, bsig.σ⟩)
-         (_ : IVec (bsig.Γ ⊢ · WF-var) b.args)
--/
-
 namespace SpawnBlock
   inductive WF (B : BlockSigs) (bspwn : SpawnBlock) : Prop where
     | mk (_ : bspwn.b < B.length)
@@ -130,39 +94,6 @@ namespace SpawnDeque
     theorem empty {fsigs canProm} : fsigs; canProm ⊢ ∅ WF-deque :=
       ⟨.nil, .of_nil⟩
   end WF
-
-  -- abbrev oblg : (ex: Nat) -> SpawnDeque -> Oblg
-  --   | ex,
-  -- inductive MatchesOblg (B : List BlockSig) : SpawnDeque -> Oblg -> Prop where
-  --   | join_π (bspwn : SpawnBlock) (π : List SpawnBlock) (σ : Oblg) :
-  --            MatchesOblg B ⟨[], π⟩ σ ->
-  --            MatchesOblg B ⟨[], bspwn :: π⟩ (σ.join B[bspwn.b]!.σ.last)
-  --   | spoin_π (bspwn : SpawnBlock) (π : List SpawnBlock) (σ : Oblg) :
-  --             MatchesOblg B ⟨[], π⟩ σ ->
-  --             MatchesOblg B ⟨[], bspwn :: π⟩ (σ.spoin B[bspwn.b]!.σ.last)
-  --   | spoin_υ (bspwn : SpawnBlock) (υ π : List SpawnBlock) (σ : Oblg) :
-  --             MatchesOblg B ⟨υ, π⟩ σ ->
-  --             MatchesOblg B ⟨υ.concat bspwn, π⟩ (σ.spoin B[bspwn.b]!.σ.last)
-  --   | retn (n : Nat) : MatchesOblg B ⟨[], []⟩ (.retn n)
-  --   | exit (n : Nat) : MatchesOblg B ⟨[], []⟩ (.exit n)
-
-  -- namespace MatchesOblg
-  --   instance decide_matches_oblg {B: List BlockSig} :
-  --                                (ρ : SpawnDeque) -> (σ : Oblg) ->
-  --                                Decidable (MatchesOblg B ρ σ)
-  --     | ⟨[], bspwn :: π⟩, .join σ n => sorry
-  --     | ⟨[], bspwn :: π⟩, .spoin σ n => sorry
-  --     | ⟨b_end :: υ, π⟩, .spoin σ n => sorry
-  --     | ⟨[], []⟩, .retn n => isTrue sorry
-  --     | ⟨[], []⟩, .exit n => isTrue sorry
-  --     | ⟨_ :: _, _⟩, .retn n => isFalse sorry
-  --     | ⟨_, _ :: _⟩, .retn n => isFalse sorry
-  --     | ⟨_ :: _, _⟩, .exit n => isFalse sorry
-  --     | ⟨_, _ :: _⟩, .exit n => isFalse sorry
-  --     | ⟨_ :: _, _⟩, .join σ n => isFalse sorry
-  --     | ⟨[], []⟩, .join σ n => isFalse sorry
-  --     | ⟨[], []⟩, .spoin σ n => isFalse
-  -- end MatchesOblg
 end SpawnDeque
 
 namespace StackFrame
@@ -171,7 +102,6 @@ namespace StackFrame
          (flt : f < P.size) ->
          (blt : b < P[f].B.length) ->
          (P[f].B[b].Γ ≤ X.length + get ∧ P[f].B[b].σ = ρ.sig P[f].B) ->
-         --P[f].B[b] = ⟨X.length + get, P[f].B[b].r, ρ.sig P[f].B⟩ ->
          P[f].B; K.allPromoted ⊢ ρ WF-deque ->
          (mk f ρ X b).WF P K get
 
@@ -182,7 +112,6 @@ namespace StackFrame
       | .mk f ρ X b =>
         decidable_of_iff (∃ flt : f < P.size,
                           ∃ blt : b < P[f].B.length,
-                          --P[f].B[b] = ⟨X.length + get, P[f].B[b].r, ρ.sig P[f].B⟩ ∧
                           (P[f].B[b].Γ ≤ X.length + get ∧ P[f].B[b].σ = ρ.sig P[f].B) ∧
                           P[f].B; K.allPromoted ⊢ ρ WF-deque)
           ⟨λ ⟨a, b, c, d⟩ => ⟨a, b, c, d⟩, λ ⟨a, b, c, d⟩ => ⟨a, b, c, d⟩⟩
@@ -207,14 +136,12 @@ namespace StackFrame
                  (wf : P; K; get ⊢ k WF-frame) ->
                  (((P[k.f]'wf.flt).B[k.b]'wf.blt).Γ ≤ k.X.length + get ∧
                   ((P[k.f]'wf.flt).B[k.b]'wf.blt).σ = k.ρ.sig (P[k.f]'wf.flt).B)
-                 -- ((P[k.f]'wf.flt).B[k.b]'wf.blt) = ⟨k.X.length + get, ((P[k.f]'wf.flt).B[k.b]'wf.blt).r, k.ρ.sig (P[k.f]'wf.flt).B⟩
       | .mk _f _ρ _X _b, mk _flt _blt bsig _ρwf => bsig
 
     theorem bsig! {P K get} : {k : StackFrame} ->
                  (wf : P; K; get ⊢ k WF-frame) ->
                  (P[k.f]!.B[k.b]!.Γ ≤ k.X.length + get ∧
                   P[k.f]!.B[k.b]!.σ = k.ρ.sig P[k.f]!.B)
---                 P[k.f]!.B[k.b]! = ⟨k.X.length + get, P[k.f]!.B[k.b]!.r, k.ρ.sig P[k.f]!.B⟩
       | .mk f _ρ _X b, mk flt blt bsig _ρwf =>
         getElem!_pos P f flt ▸
         getElem!_pos P[f].B b blt ▸
@@ -236,15 +163,12 @@ namespace StackFrame
     theorem spawn {P f bspwn} (flt : f < P.size) (bwf : P[f].B ⊢ bspwn WF-spawn) :
                   P; .nil ⊢ .spawn f bspwn WF-frame :=
       let blt := bwf.b
-      -- let sigeq : P[f].B[bspwn.b] = ⟨bspwn.args.length, P[f].B[bspwn.b].r, []⟩ :=
-      --   bwf.args ▸ bwf.σ ▸ rfl
       ⟨flt, blt, ⟨bwf.args ▸ Nat.le_refl P[f].B[bspwn.b].Γ, bwf.σ⟩, .empty⟩
 
     theorem entry {P} (Pwf : P WF-program) {f K X} (flt : f < P.size)
                   (sigwf : P[f].fsig.arity = X.length) : P; K ⊢ ⟨f, ∅, X, 0⟩ WF-frame :=
       let blt : 0 < P[f].B.length :=
         Pwf⁅f⁆.head.zero_lt_map
---      let sigeq := sigwf ▸ Pwf⁅f⁆.head.get0eq_map ▸ rfl
       ⟨flt, blt, ⟨sigwf ▸ Pwf⁅f⁆.head.get0eq_map ▸ by simp,
                   List.getElem_map Block.bsig ▸
                   congrArg (·.σ) Pwf⁅f⁆.head.get0eq⟩, .empty⟩
@@ -258,7 +182,6 @@ namespace StackFrame
       ⟨flt,
        bnext_wf.blt,
        bnext_wf.bsig ▸ by simp; rw[ValMap.getElem_length bnext_wf.args]; simp,
-       --bnext_wf.bsig ▸ by simp; symm; exact ValMap.getElem_length bnext_wf.args,
        ρwf⟩
 
     theorem goto
@@ -360,12 +283,6 @@ namespace CallStack
         let _ : Decidable (P; (k.ret! P) ⊢ K WF-stack) := instDecidable K
         decidable_of_iff (P; K; (get.getD 0) ⊢ k WF-frame ∧ K.WF P (some (k.ret! P)))
           ⟨λ ⟨a, b⟩ => .cons a b, λ | .cons a b => ⟨a, b⟩⟩
-        -- dite (P; K; (get.getD 0) ⊢ k WF-frame)
-        --   (λ kwf => let _ : Decidable (P; (k.ret kwf) ⊢ K WF-stack) :=
-        --               instDecidable K
-        --             decidable_of_iff (P; (k.ret kwf) ⊢ K WF-stack)
-        --               ⟨cons kwf, λ | cons _kwf' Kwf => Kwf⟩)
-        --   (isFalse ∘ λ | kₙwf, cons kwf _Kwf => kₙwf kwf)
 
     theorem nonnil {P} {K : CallStack} (Kwf : P ⊢ K WF-stack) : K ≠ CallStack.nil :=
       by cases Kwf <;> simp
@@ -424,8 +341,6 @@ namespace CallStack
   @[simp] def bsig {P : Program} (K : CallStack) (wf : P ⊢ K WF-stack) : BlockSig :=
     (K.head wf.nonnil).bsig wf.current
 
-  -- @[simp] def code! (P : Program) (K : CallStack) : Code :=
-  --   K.head!.code! P
   @[simp] def code {P : Program} (K : CallStack) (wf : P ⊢ K WF-stack) : Code :=
     (K.head wf.nonnil).code wf.current
 
@@ -448,8 +363,7 @@ namespace CallStack
         let wf' : P; get ⊢ (K ⬝ k) WF-stack :=
           by rw[@append_cons K .nil k] at wf; exact wf
         let k_wf : P; K; (get.getD 0) ⊢ k WF-frame :=
-          wf'.head -- ⟨wf'.head.flt, wf'.head.blt, wf'.head.bsig, wf'.head.ρwf⟩
-          --⟨wf'.head.flt, kprom ▸ wf'.head.ρwf, wf'.head.cwf⟩
+          wf'.head
         let nil_k_wf := .nil ⬝wf (k_wf.changeStack (K' := .nil) (λ _ => rfl))
         let rr : some ((.nil ⬝ k).exitsig P) = (.nil ⬝ k).exitsig?! P :=
           exitsig_eq_exitsig?! nil_k_wf
