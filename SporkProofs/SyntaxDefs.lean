@@ -1,7 +1,11 @@
 import SporkProofs.SimpSet
+--import SporkProofs.Scope
 
 abbrev Val := Int
 
+-- axiom AMap.{u,v} : Type u -> Type v -> Type (max u v)
+-- variable (instMap : Map AMap)
+-- abbrev Scope := AMap Nat Unit
 abbrev Scope := Nat
 abbrev Params := Nat
 

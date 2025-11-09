@@ -1,4 +1,4 @@
-import SporkProofs.Syntax
+import SporkProofs.SyntaxDefs
 import SporkProofs.IVec
 import SporkProofs.HeadIs
 

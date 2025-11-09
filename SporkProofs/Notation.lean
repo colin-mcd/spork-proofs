@@ -1,5 +1,5 @@
-import SporkProofs.Syntax
-import SporkProofs.WFSyntax
+import SporkProofs.SyntaxDefs
+import SporkProofs.SyntaxWF
 open Lean Elab Macro
 
 /-!
@@ -120,6 +120,7 @@ declare_syntax_cat ssa_expr
 declare_syntax_cat stmtget
 declare_syntax_cat BB
 declare_syntax_cat PF
+declare_syntax_cat ssa_extexpr
 
 --syntax "var" "⟨" term "⟩" : term
 syntax "list?" "[" term,* "]" : term

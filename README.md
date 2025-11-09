@@ -1,10 +1,11 @@
 # SporkProofs
 
 This repo contains the following notable files:
-- `SporkProofs.Syntax`: syntax definitions for Spork IR (statics)
-- `SporkProofs.Semantics`: semantics definitions for Spork IR (dynamics)
-- `SporkProofs.WFSyntax`: rules and theorems for well-formed programs
-- `SporkProofs.WFSemantics`: rules and theorems for well-formed program *states*
+- `SporkProofs.SyntaxDefs`: syntax definitions for Spork IR (statics)
+- `SporkProofs.SemanticsDefs`: semantics definitions for Spork IR (dynamics)
+- `SporkProofs.SyntaxWF`: rules and theorems for well-formed programs
+- `SporkProofs.SemanticsWF`: rules and theorems for well-formed program *states*
+- `SporkProofs.Semantics`: operational semantics rules for Spork IR
 - `SporkProofs.Progress`: proof of progress
 - `SporkProofs.Preservation`: proof of preservation
 - `SporkProofs.Soundness`: proof of soundness

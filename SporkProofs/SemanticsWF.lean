@@ -1,6 +1,6 @@
-import SporkProofs.Syntax
-import SporkProofs.WFSyntax
-import SporkProofs.Semantics
+import SporkProofs.SyntaxDefs
+import SporkProofs.SyntaxWF
+import SporkProofs.SemanticsDefs
 import SporkProofs.IVec
 import SporkProofs.HeadIs
 import SporkProofs.SimpSet

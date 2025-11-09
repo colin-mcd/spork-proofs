@@ -1,6 +1,6 @@
-import SporkProofs.Syntax
+import SporkProofs.SyntaxDefs
 import SporkProofs.Notation
-import SporkProofs.WFSyntax
+import SporkProofs.SyntaxWF
 
 /-!
 Implementation of `par` and `reduce` in Spork IR,
@@ -11,7 +11,7 @@ We use the DSL notation for Spork IR defined in `SporkProofs.Notation`
 
 
 def par (f g : FuncIdx) : Func := func (
-    block start():
+    block entry():
       SPORK (goto body(), goto spwn())
     block body():
       CALL f() ⊳ goto cont()
@@ -30,7 +30,7 @@ def par (f g : FuncIdx) : Func := func (
   )
 
 def reduce (f c reduce : FuncIdx) : Func := func (
-    block start(z,a,i,j):
+    block entry(z,a,i,j):
       GOTO guard(z,i,j,a)
     block guard(z,i,j,a):
       b ← i >= j,

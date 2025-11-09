@@ -3,10 +3,11 @@
 import SporkProofs.SimpSet
 import SporkProofs.IVec
 import SporkProofs.HeadIs
-import SporkProofs.Syntax
+import SporkProofs.SyntaxDefs
+import SporkProofs.SemanticsDefs
+import SporkProofs.SyntaxWF
+import SporkProofs.SemanticsWF
 import SporkProofs.Semantics
-import SporkProofs.WFSyntax
-import SporkProofs.WFSemantics
 import SporkProofs.Notation
 import SporkProofs.ParReduce
 import SporkProofs.Preservation

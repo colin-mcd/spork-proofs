@@ -1,7 +1,8 @@
-import SporkProofs.Syntax
+import SporkProofs.SyntaxDefs
+import SporkProofs.SemanticsDefs
+import SporkProofs.SyntaxWF
+import SporkProofs.SemanticsWF
 import SporkProofs.Semantics
-import SporkProofs.WFSyntax
-import SporkProofs.WFSemantics
 
 namespace Step
 

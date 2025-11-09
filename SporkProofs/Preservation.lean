@@ -1,7 +1,8 @@
-import SporkProofs.Syntax
+import SporkProofs.SyntaxDefs
+import SporkProofs.SemanticsDefs
+import SporkProofs.SyntaxWF
+import SporkProofs.SemanticsWF
 import SporkProofs.Semantics
-import SporkProofs.WFSyntax
-import SporkProofs.WFSemantics
 
 namespace Step
   theorem preserve_exitsig_stack_cons
@@ -113,23 +114,41 @@ namespace Step
       exact congrArg (·.2) Rwf.parent.get.c.spoin_bprom.bsig.symm
 
   theorem preserve_prom {P : Program} : {R R' : ThreadTree} ->
-                         P ⊢ R ↦ R' -> P ⊢ R WF-tree -> R.prom = R'.prom
+                         P ⊢ R ↦ R' -> R.prom = R'.prom
   | R, R', s => by
-    cases s <;> intro Rwf <;> try simp <;> try rfl
+    cases s <;> try simp <;> try rfl
     · case congr_parent Rp Rp' Rc Rp_Rp' =>
-      rw[preserve_prom Rp_Rp' Rwf.parent]
+      rw[preserve_prom Rp_Rp']
     · case promote f unpr g prom X K c K' u p =>
       simp[p]
 
-  open CallStack in
   theorem preserve_promsig {P : Program} : {R R' : ThreadTree} ->
-                            P ⊢ R ↦ R' -> P ⊢ R WF-tree -> R.promsig P = R'.promsig P
+                            P ⊢ R ↦ R' -> R.promsig P = R'.promsig P
   | R, R', s => by
-    cases s <;> intro Rwf <;> try simp <;> try rfl
+    cases s <;> try simp <;> try rfl
     · case congr_parent Rp Rp' Rc Rp_Rp' =>
-      rw[preserve_promsig Rp_Rp' Rwf.parent]
+      rw[preserve_promsig Rp_Rp']
     · case promote f unpr bspwn prom X K b K' c u p =>
       simp[CallStack.prom_promsig_nil.mp p]
+
+  theorem preserve_last_f {P} : {R R' : ThreadTree} ->
+                          P ⊢ R ↦ R' -> R.split.fst.K.last!.f = R'.split.fst.K.last!.f
+    | R, R', s => by
+      have last!_eq_last!_f {K f σ X b σ' X' b'} :
+                            (K ⬝ ⟨f, σ, X, b⟩).last!.f = (K ⬝ ⟨f, σ', X', b'⟩).last!.f :=
+        by cases K <;> simp only [CallStack.last!, getters]
+      cases s <;> try simp <;> try exact last!_eq_last!_f <;> try rfl
+      · case congr_parent Rp Rp' Rc s => apply preserve_last_f s
+      · case promote f u bspwn p X K b K' C unil pnil =>
+        induction K'
+        · case nil =>
+          exact CallStack.append_nil ▸ last!_eq_last!_f
+        · case cons K'' k'' ih =>
+          cases K''
+          · case nil =>
+            simp; exact last!_eq_last!_f
+          · case cons K''' k''' =>
+            simpa using ih (by simp at pnil ⊢; exact pnil.2)
 
   theorem goto_rets!h
       {P} {K k} {bnext : Cont} {r r' : Nat}
@@ -161,12 +180,12 @@ namespace Step
     try (apply Thread.WF.fromStack! Pwf)
 
     · case congr_parent Rp Rp' Rc Rp_Rp' Rpwf Rcwf Rcp Rpp =>
-        exact node (preservation Pwf Rpwf Rp_Rp') Rcwf (preserve_promsig Rp_Rp' Rpwf ▸ Rpp) Rcp
+        exact node (preservation Pwf Rpwf Rp_Rp') Rcwf (preserve_promsig Rp_Rp' ▸ Rpp) Rcp
 
     · case congr_child Rp Rc Rc' Rc_Rc' Rpwf Rcwf Rcp Rpp =>
         exact node Rpwf (preservation Pwf Rcwf Rc_Rc')
                         (preserve_exitsig Rc_Rc' Rcwf ▸ Rpp)
-                        (preserve_prom Rc_Rc' Rcwf ▸ Rcp)
+                        (preserve_prom Rc_Rc' ▸ Rcp)
 
     · case stmt f K ρ X b e v c a wf =>
         exact match wf with
